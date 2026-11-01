@@ -11,15 +11,20 @@
     <icons:MaterialIconStyles />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
     <Style Selector="Window"><Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" /><Setter Property="FontSize" Value="13" /><Setter Property="Background" Value="#10161F" /><Setter Property="Foreground" Value="#D9E3EE" /></Style>
-    <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="11,7" /><Setter Property="Background" Value="#202C3A" /><Setter Property="BorderBrush" Value="#38495B" /><Setter Property="BorderThickness" Value="1" /></Style>
-    <Style Selector="Button:not(.nav):not(.primary):not(.accent):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#2C3D50" /><Setter Property="BorderBrush" Value="#627B94" /></Style>
-    <Style Selector="Button:not(.nav):not(.primary):not(.accent):pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#172330" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="11,7" /><Setter Property="MinHeight" Value="32" /><Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="Background" Value="#202C3A" /><Setter Property="BorderBrush" Value="#38495B" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="Button:not(.nav):not(.primary):not(.accent):not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#2C3D50" /><Setter Property="BorderBrush" Value="#627B94" /></Style>
+    <Style Selector="Button:not(.nav):not(.primary):not(.accent):not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#172330" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="#79DDC4" /><Setter Property="Foreground" Value="#10161F" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="Button.primary:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#96E8D3" /><Setter Property="BorderBrush" Value="#96E8D3" /><Setter Property="TextElement.Foreground" Value="#10161F" /></Style>
+    <Style Selector="Button.primary:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#53BCA3" /><Setter Property="BorderBrush" Value="#53BCA3" /><Setter Property="TextElement.Foreground" Value="#10161F" /></Style>
     <Style Selector="Button.workspace-entry"><Setter Property="Height" Value="36" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
     <Style Selector="ToggleButton.commit-amend"><Setter Property="CornerRadius" Value="6" /><Setter Property="Background" Value="#202C3A" /><Setter Property="BorderBrush" Value="#38495B" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="ToggleButton.commit-amend:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#2C3D50" /><Setter Property="BorderBrush" Value="#627B94" /></Style>
     <Style Selector="ToggleButton.commit-amend:checked /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#233E3B" /><Setter Property="BorderBrush" Value="#79DDC4" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
     <Style Selector="Button.nav"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="FontSize" Value="12" /><Setter Property="Padding" Value="10,7" /></Style>
     <Style Selector="Button.selected"><Setter Property="Background" Value="#233E3B" /><Setter Property="Foreground" Value="#79DDC4" /></Style>
+    <Style Selector="Button.nav:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#202C3A" /></Style>
+    <Style Selector="Button.nav.selected:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#2C5149" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
     <Style Selector="Button.accent"><Setter Property="Foreground" Value="#79DDC4" /><Setter Property="BorderBrush" Value="#365B52" /><Setter Property="BorderThickness" Value="1" /></Style>
     <Style Selector="Expander">
       <Setter Property="Theme" Value="{StaticResource SectionExpanderTheme}" />
@@ -35,15 +40,24 @@
     <Style Selector="ToggleButton.section-toggle">
       <Setter Property="Theme" Value="{StaticResource SectionToggleTheme}" />
       <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,7" /><Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#8B9DAF" /><Setter Property="MinHeight" Value="32" /><Setter Property="HorizontalAlignment" Value="Stretch" />
-      <Setter Property="Template"><ControlTemplate><Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" /></Border></ControlTemplate></Setter>
+      <Setter Property="Template"><ControlTemplate><Border Name="SectionHeader" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4"><ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" /></Border></ControlTemplate></Setter>
     </Style>
+    <Style Selector="ToggleButton.section-toggle:pointerover"><Setter Property="Background" Value="#202C3A" /></Style>
+    <Style Selector="ToggleButton.section-toggle:focus-visible /template/ Border#SectionHeader"><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
     <Style Selector="Expander#CommitPanel /template/ ToggleButton.section-toggle"><Setter Property="MinHeight" Value="26" /><Setter Property="Padding" Value="6,3" /></Style>
     <Style Selector="ToggleButton.section-toggle:checked Path.disclosure"><Setter Property="RenderTransform" Value="rotate(90deg)" /></Style>
     <Style Selector="Path.disclosure"><Setter Property="RenderTransformOrigin" Value="50%,50%" /></Style>
-    <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#182F2B" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
-    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#28544C" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
-    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#366D61" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
-    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="5" /><Setter Property="Background" Value="#10161F" /><Setter Property="BorderBrush" Value="#2B3949" /><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="Button.accent:not(:disabled) /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#182F2B" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
+    <Style Selector="Button.accent:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#28544C" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="Button.accent:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#366D61" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.commit-amend:disabled /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#1A2430" /><Setter Property="BorderBrush" Value="#2B3949" /><Setter Property="TextElement.Foreground" Value="#718296" /></Style>
+    <Style Selector="Button.nav:disabled /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" /></Style>
+    <Style Selector="Button:focus-visible /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.commit-amend:focus-visible /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="BorderBrush" Value="#B4F4E3" /></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="5" /><Setter Property="Background" Value="#10161F" /><Setter Property="BorderBrush" Value="#2B3949" /><Setter Property="Foreground" Value="#D9E3EE" /><Setter Property="CaretBrush" Value="#D9E3EE" /><Setter Property="SelectionBrush" Value="#365B52" /><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="TextBox:not(:disabled):pointerover /template/ Border#PART_BorderElement"><Setter Property="Background" Value="#10161F" /><Setter Property="BorderBrush" Value="#627B94" /></Style>
+    <Style Selector="TextBox:focus"><Setter Property="Foreground" Value="#D9E3EE" /></Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement"><Setter Property="Background" Value="#10161F" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="TextBox:not(:disabled) /template/ TextBlock#PART_Watermark"><Setter Property="Foreground" Value="#8B9DAF" /><Setter Property="Opacity" Value="1" /></Style>
     <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#8B9DAF" /><Setter Property="FontSize" Value="11" /></Style>
   </Application.Styles>
   <NativeMenu.Menu>

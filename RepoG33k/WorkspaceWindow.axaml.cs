@@ -53,6 +53,7 @@ public partial class WorkspaceWindow : Window
     private bool m_closeReady;
     private bool m_closing;
     private bool m_workspaceFormOpen;
+    private Action m_dismissWorkspaceForm;
     private CancellationTokenSource m_cancellation;
     private readonly DispatcherTimer m_changeTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
@@ -182,6 +183,7 @@ public partial class WorkspaceWindow : Window
         CancelButton.Click += (_, _) => { m_cancellation?.Cancel(); m_view?.CancelLoad(); };
         AmendButton.IsCheckedChanged += async (_, _) =>
         {
+            UpdateEnabledState();
             if (AmendButton.IsChecked == true && m_snapshot?.Head != null)
                 await PerformAsync("Reading last commit…", async () =>
                 {
@@ -215,6 +217,11 @@ public partial class WorkspaceWindow : Window
         m_changeTimer.Tick += async (_, _) =>
         {
             m_changeTimer.Stop();
+            if (m_workspaceFormOpen)
+            {
+                m_changeTimer.Start();
+                return;
+            }
             if (!m_busy)
                 await PerformAsync("Updating working changes…", RefreshMetadataAsync, keepEditorActive: true);
         };
@@ -245,6 +252,7 @@ public partial class WorkspaceWindow : Window
             if (m_closeReady)
                 return;
             e.Cancel = true;
+            if (m_workspaceFormOpen) { m_dismissWorkspaceForm?.Invoke(); return; }
             if (m_closing)
                 return;
             if (m_busy) { m_cancellation?.Cancel(); SetStatus("Wait for the current operation to finish before closing."); return; }
@@ -328,6 +336,21 @@ public partial class WorkspaceWindow : Window
         CancelButton.IsVisible = m_view?.IsLoading == true || (m_busy && m_isCancellable);
         RebaseButton.IsEnabled = ready && !m_snapshot.Rebasing && !m_snapshot.Merging;
         CommitButton.IsEnabled = ready && !string.IsNullOrWhiteSpace(SummaryBox.Text) && !m_snapshot.Rebasing && !m_snapshot.Merging && !m_snapshot.Files.Any(f => f.IsConflict) && m_snapshot.Files.Any(f => f.IsStaged || f.IsUnstaged);
+        var amend = AmendButton.IsChecked == true;
+        CommitButton.Content = amend ? "Amend commit" : "Commit";
+        AmendButton.IsEnabled = ready && m_snapshot.Head != null && !m_snapshot.Rebasing && !m_snapshot.Merging;
+        var commitHint = m_snapshot == null ? "Open a repository to commit changes."
+            : m_busy || m_view?.IsLoading == true ? "Wait for the current operation to finish."
+            : m_snapshot.Rebasing || m_snapshot.Merging ? "Finish the current Git operation before committing."
+            : m_snapshot.Files.Any(f => f.IsConflict) ? "Resolve file conflicts before committing."
+            : !m_snapshot.Files.Any(f => f.IsStaged || f.IsUnstaged) ? "There are no changes to commit."
+            : string.IsNullOrWhiteSpace(SummaryBox.Text) ? "Enter a commit summary first."
+            : amend ? "Amend the last commit using this message and the selected changes."
+            : m_snapshot.Files.Any(f => f.IsStaged) ? "Commit staged changes using this message."
+            : "Stage and commit all working changes using this message.";
+        ToolTip.SetTip(CommitButton, commitHint);
+        ToolTip.SetShowOnDisabled(CommitButton, true);
+        ToolTip.SetTip(AmendButton, "Toggle amend mode, then choose Amend commit to update the last commit.");
         OperationBanner.IsVisible = m_snapshot?.Rebasing == true || m_snapshot?.Merging == true || m_snapshot?.Files.Any(f => f.IsConflict) == true;
         ContinueButton.IsVisible = AbortButton.IsVisible = m_snapshot?.Rebasing == true;
         ContinueButton.IsEnabled = ready;
@@ -529,8 +552,8 @@ public partial class WorkspaceWindow : Window
         AllChangesButton.Content = $"▧  All changes     {m_snapshot.Files.Count}";
         StagedButton.Content = $"✓  Staged     {m_snapshot.Files.Count(f => f.IsStaged)}";
         UnstagedButton.Content = $"◌  Unstaged     {m_snapshot.Files.Count(f => f.IsUnstaged)}";
-        PushButton.Content = $"↑  Push{(m_snapshot.Ahead > 0 ? "  " + m_snapshot.Ahead : string.Empty)}";
-        PullButton.Content = $"↓  Pull{(m_snapshot.Behind > 0 ? "  " + m_snapshot.Behind : string.Empty)}";
+        PushLabel.Text = $"Push{(m_snapshot.Ahead > 0 ? "  " + m_snapshot.Ahead : string.Empty)}";
+        PullLabel.Text = $"Pull{(m_snapshot.Behind > 0 ? "  " + m_snapshot.Behind : string.Empty)}";
         RenderConvention();
         LocalBranches.Children.Clear();
         RemoteBranches.Children.Clear();
@@ -775,21 +798,24 @@ public partial class WorkspaceWindow : Window
             return;
         var convention = new ComboBox { ItemsSource = new[] { "Home · Fix / Feature / Other", "Work · Jira story ID" }, SelectedIndex = Preferences.Convention == "jira" ? 1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch };
         var category = new ComboBox { ItemsSource = new[] { "Fix", "Feature", "Other" }, SelectedItem = Preferences.Category, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var categoryLabel = Label("Category");
         var ids = CommitConvention.DetectJiraIds(m_snapshot.Branch);
         var detected = Label(ids.Length == 1 ? $"Detected {ids[0]} from {m_snapshot.Branch}" : ids.Length == 0 ? "No Jira ID in the branch name. Enter one below." : "Multiple Jira IDs found. Enter the ID for this commit below.");
         var story = new TextBox { Watermark = ids.Length == 1 ? $"Automatic: {ids[0]}" : "TS-1234", Text = Preferences.JiraOverride };
+        var storyLabel = Label("Jira story ID (optional override)");
+        var storyHint = Label("Story overrides apply to this commit only.");
         var example = Label(string.Empty);
         void Update()
         {
-            category.IsVisible = convention.SelectedIndex == 0;
-            detected.IsVisible = story.IsVisible = convention.SelectedIndex == 1;
+            categoryLabel.IsVisible = category.IsVisible = convention.SelectedIndex == 0;
+            detected.IsVisible = storyLabel.IsVisible = story.IsVisible = storyHint.IsVisible = convention.SelectedIndex == 1;
             example.Text = convention.SelectedIndex == 1 ? $"[{(string.IsNullOrWhiteSpace(story.Text) ? ids.FirstOrDefault() ?? "STORY-ID" : story.Text)}] Fix the slow app startup" : $"{category.SelectedItem}: Update the README with new images";
         }
         convention.SelectionChanged += (_, _) => Update();
         category.SelectionChanged += (_, _) => Update();
         story.TextChanged += (_, _) => Update();
         Update();
-        if (await FormAsync("Commit message convention", [Label("Saved for this repository"), convention, category, detected, story, Label("Story overrides apply to this commit only."), example], "Save convention"))
+        if (await FormAsync("Commit message convention", [Label("Convention (saved for this repository)"), convention, categoryLabel, category, detected, storyLabel, story, storyHint, Label("Preview"), example], "Save convention"))
         {
             Preferences.Convention = convention.SelectedIndex == 1 ? "jira" : "home";
             Preferences.Category = category.SelectedItem as string ?? "Feature";
@@ -812,7 +838,8 @@ public partial class WorkspaceWindow : Window
 
     private void RenderCodexAccount()
     {
-        AccountButton.Content = m_codex.AccountLabel == null ? "✦  Sign in with ChatGPT" : "✦  ChatGPT connected";
+        AccountLabel.Text = m_codex.AccountLabel == null ? "Sign in with ChatGPT" : "ChatGPT connected";
+        Avalonia.Automation.AutomationProperties.SetName(AccountButton, AccountLabel.Text);
         ToolTip.SetTip(AccountButton, m_codex.AccountLabel ?? "Connect your ChatGPT account for Codex commit drafts.");
     }
 
@@ -892,7 +919,7 @@ public partial class WorkspaceWindow : Window
     {
         var url = new TextBox { Watermark = "https://bitbucket.example.com/projects/TEAM/repos/repo/pull-requests/123" };
         string Validate() => !BitbucketPrUrlParser.TryParse(url.Text, out _, out var error) ? error : null;
-        if (!await FormAsync("Open a Bitbucket pull request", [Label("Pull request URL"), url, Label("The PR will open in a temporary workspace, deleted when RepoG33k closes.")], "Review PR", validate: Validate, withinWorkspace: true))
+        if (!await FormAsync("Open a Bitbucket pull request", [Label("Pull request URL"), url, Label("The PR will open in a temporary workspace, deleted when RepoG33k closes.")], "Review PR", validate: Validate))
             return;
         await PerformAsync("Preparing pull request review…", async () =>
         {
@@ -935,33 +962,27 @@ public partial class WorkspaceWindow : Window
 
     private async Task MessageAsync(string title, string message) => await FormAsync(title, [Label(message)], "OK", cancel: false);
 
-    private async Task<bool> FormAsync(string title, Control[] fields, string accept, bool cancel = true, Func<string> validate = null, string cancelText = "Cancel", bool withinWorkspace = false)
+    private async Task<bool> FormAsync(string title, Control[] fields, string accept, bool cancel = true, Func<string> validate = null, string cancelText = "Cancel")
     {
+        if (m_workspaceFormOpen)
+            throw new InvalidOperationException("Close the current dialog before opening another one.");
+
         var completion = new TaskCompletionSource<bool>();
-        var dialog = withinWorkspace ? null : new Window { Title = title, Width = cancel ? 510 : 440, SizeToContent = SizeToContent.Height, MaxHeight = 700, CanResize = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brush.Parse("#171F2A"), Foreground = Brush.Parse("#D9E3EE") };
-        void Complete(bool result)
-        {
-            if (withinWorkspace)
-                completion.TrySetResult(result);
-            else
-                dialog.Close(result);
-        }
+        void Complete(bool result) => completion.TrySetResult(result);
         var panel = new StackPanel { Margin = new Thickness(20), Spacing = 12, VerticalAlignment = VerticalAlignment.Top };
-        if (cancel)
-            panel.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         foreach (var field in fields)
             panel.Children.Add(field);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
         if (cancel)
         {
-            var dismiss = new Button { Content = cancelText, IsCancel = true };
+            var dismiss = new Button { Content = cancelText, MinWidth = 100, Height = 36 };
             dismiss.Click += (_, _) => Complete(false);
             actions.Children.Add(dismiss);
         }
         var validation = Label(string.Empty);
-        validation.IsVisible = validate != null;
         panel.Children.Add(validation);
-        var confirm = new Button { Content = accept, MinWidth = 80, IsDefault = true };
+        var confirm = new Button { Content = accept, MinWidth = 100, Height = 36 };
         confirm.Classes.Add("primary");
         void UpdateValidation()
         {
@@ -970,62 +991,73 @@ public partial class WorkspaceWindow : Window
             validation.IsVisible = !string.IsNullOrEmpty(error);
             confirm.IsEnabled = string.IsNullOrEmpty(error);
         }
-        foreach (var field in fields)
+        for (var i = 0; i < fields.Length; i++)
         {
+            var field = fields[i];
+            if (field is TextBox or ComboBox && i > 0 && fields[i - 1] is TextBlock label)
+                Avalonia.Automation.AutomationProperties.SetName(field, label.Text);
             if (field is TextBox textBox)
                 textBox.TextChanged += (_, _) => UpdateValidation();
             if (field is ComboBox comboBox)
                 comboBox.SelectionChanged += (_, _) => UpdateValidation();
         }
         UpdateValidation();
-        confirm.Click += (_, _) =>
+        void Accept()
         {
             UpdateValidation();
             if (confirm.IsEnabled)
                 Complete(true);
-        };
+        }
+        confirm.Click += (_, _) => Accept();
         actions.Children.Add(confirm);
         panel.Children.Add(actions);
-        var content = new ScrollViewer { Content = panel, VerticalAlignment = VerticalAlignment.Top, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
-        if (withinWorkspace)
+        var card = new Border
         {
-            var root = (Grid)Content;
-            var previousFocus = FocusManager?.GetFocusedElement();
-            var controls = root.Children.Select(control => (Control: control, WasEnabled: control.IsEnabled)).ToArray();
-            var overlay = new Border
-            {
-                Background = Brush.Parse("#99000000"),
-                Child = new Border
-                {
-                    Width = 510, MaxWidth = Math.Max(0, Bounds.Width - 40), MaxHeight = Math.Max(0, Bounds.Height - 40),
-                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                    Background = Brush.Parse("#171F2A"), BorderBrush = Brush.Parse("#38495B"), BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(8), Child = content
-                }
-            };
-            Grid.SetRowSpan(overlay, 3);
-            KeyboardNavigation.SetTabNavigation(overlay, KeyboardNavigationMode.Cycle);
-            overlay.KeyDown += (_, e) =>
-            {
-                if (e.Key == Key.Escape && cancel) { Complete(false); e.Handled = true; }
-                else if (e.Key == Key.Enter && confirm.IsEnabled && e.Source is TextBox { AcceptsReturn: false }) { Complete(true); e.Handled = true; }
-            };
-            m_workspaceFormOpen = true;
-            foreach (var item in controls)
-                item.Control.IsEnabled = false;
-            root.Children.Add(overlay);
-            (fields.FirstOrDefault(field => field.Focusable) ?? confirm).Focus();
-            try { return await completion.Task; }
-            finally
-            {
-                root.Children.Remove(overlay);
-                m_workspaceFormOpen = false;
-                foreach (var item in controls)
-                    item.Control.IsEnabled = item.WasEnabled;
-                previousFocus?.Focus();
-            }
+            Width = cancel ? 510 : 440,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Background = Brush.Parse("#171F2A"), BorderBrush = Brush.Parse("#38495B"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Child = new ScrollViewer { Content = panel, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }
+        };
+        void ResizeCard(object sender, SizeChangedEventArgs e)
+        {
+            card.MaxWidth = Math.Max(0, Bounds.Width - 40);
+            card.MaxHeight = Math.Max(0, Bounds.Height - 40);
         }
-        dialog.Content = content;
-        return await dialog.ShowDialog<bool>(this);
+        ResizeCard(this, null);
+        SizeChanged += ResizeCard;
+        var root = (Grid)Content;
+        var previousFocus = FocusManager?.GetFocusedElement();
+        var controls = root.Children.Select(control => (Control: control, WasEnabled: control.IsEnabled)).ToArray();
+        var overlay = new Border { Background = Brush.Parse("#99000000"), Child = card };
+        Grid.SetRowSpan(overlay, 3);
+        KeyboardNavigation.SetTabNavigation(overlay, KeyboardNavigationMode.Cycle);
+        overlay.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape) { Complete(false); e.Handled = true; }
+            else if (e.Key == Key.Enter && e.Source is TextBox { AcceptsReturn: false }) { Accept(); e.Handled = true; }
+        };
+        m_workspaceFormOpen = true;
+        m_dismissWorkspaceForm = () => Complete(false);
+        foreach (var item in controls)
+            item.Control.IsEnabled = false;
+        root.Children.Add(overlay);
+        var firstField = fields.FirstOrDefault(field => field.Focusable && field.IsVisible && field.IsEnabled && field is not TextBox { IsReadOnly: true });
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (root.Children.Contains(overlay))
+                (firstField ?? actions.Children.OfType<Button>().First()).Focus();
+        }, DispatcherPriority.Loaded);
+        try { return await completion.Task; }
+        finally
+        {
+            SizeChanged -= ResizeCard;
+            root.Children.Remove(overlay);
+            m_workspaceFormOpen = false;
+            m_dismissWorkspaceForm = null;
+            foreach (var item in controls)
+                item.Control.IsEnabled = item.WasEnabled;
+            previousFocus?.Focus();
+        }
     }
 }
