@@ -1,0 +1,24 @@
+{
+  "ProductName": "RepoG33k",
+  "CompanyName": "Dean Edis (DeanTheCoder)",
+  "PublisherUrl": "https://github.com/deanthecoder",
+  "BundleIdentifier": "com.deanthecoder.repog33k",
+  "Executable": "RepoG33k",
+  "Project": "RepoG33k/RepoG33k.csproj",
+  "Version": "0.1",
+  "Win": {
+    "InnoScript": "Installer/templates/inno.iss",
+    "IconIco": "Assets/repog33k.ico",
+    "GUID": "{75726DBE-3C18-4665-AFEA-23B593A6D0F3}",
+    "RuntimeIdentifier": "win-x64",
+    "InstallOpenAL": false
+  },
+  "Mac": {
+    "RuntimeIdentifiers": [
+      "osx-arm64",
+      "osx-x64"
+    ],
+    "IconIcns": "Assets/repog33k.icns",
+    "InfoPlist": "Installer/templates/Info.plist"
+  }
+}

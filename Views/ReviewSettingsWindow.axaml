@@ -1,0 +1,146 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewModels="clr-namespace:ReviewG33k.ViewModels"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        mc:Ignorable="d"
+        x:Class="ReviewG33k.Views.ReviewSettingsWindow"
+        Width="860"
+        Height="660"
+        MinWidth="760"
+        MinHeight="520"
+        Title="Review Settings">
+    <Design.DataContext>
+        <viewModels:ReviewSettingsWindowViewModel />
+    </Design.DataContext>
+
+    <Grid>
+        <Image Source="/Assets/child-window-bg.jpg"
+               Stretch="UniformToFill" />
+        <Border>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#B2040A13" Offset="0" />
+                    <GradientStop Color="#90040A13" Offset="0.4" />
+                    <GradientStop Color="#C8040911" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Grid Margin="24"
+              RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0"
+                  Margin="0,6,0,18"
+                  ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="mainHeroEyebrow"
+                               Text="REVIEW SETTINGS" />
+                    <TextBlock Classes="mainSectionTitle"
+                               FontSize="28"
+                               Text="Issue Types" />
+                    <TextBlock Opacity="0.85"
+                               Text="{Binding SummaryText}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Spacing="8">
+                    <Button Classes="neon"
+                            Command="{Binding EnableAllCommand}"
+                            ToolTip.Tip="Enable every issue type">
+                        <materialIcons:MaterialIcon Width="18"
+                                                    Height="18"
+                                                    Kind="CheckboxMarkedCircleOutline" />
+                    </Button>
+                    <Button Classes="neon"
+                            Command="{Binding DisableAllCommand}"
+                            ToolTip.Tip="Disable every issue type">
+                        <materialIcons:MaterialIcon Width="18"
+                                                    Height="18"
+                                                    Kind="CheckboxBlankCircleOutline" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  Margin="0,0,0,6"
+                  ColumnDefinitions="*,120">
+                <TextBlock Margin="16,0,0,0"
+                           FontWeight="SemiBold"
+                           Text="Issue type" />
+                <TextBlock Grid.Column="1"
+                           HorizontalAlignment="Right"
+                           Margin="0,0,16,0"
+                           FontWeight="SemiBold"
+                           Text="Enabled" />
+            </Grid>
+
+            <Border Grid.Row="2"
+                    Classes="mainGlassPanel"
+                    Padding="12">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Categories}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:ReviewRulePreferenceCategoryViewModel">
+                                <StackPanel Margin="0,0,0,18"
+                                            Spacing="8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock FontSize="18"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding CategoryName}" />
+                                        <TextBlock Grid.Column="1"
+                                                   VerticalAlignment="Center"
+                                                   Opacity="0.76"
+                                                   Text="{Binding CountText}" />
+                                    </Grid>
+
+                                    <ItemsControl ItemsSource="{Binding Rules}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="viewModels:ReviewRulePreferenceItemViewModel">
+                                                <Grid Margin="0,0,0,6"
+                                                      ColumnDefinitions="*,Auto"
+                                                      Background="#620C1622">
+                                                    <StackPanel Margin="12,8"
+                                                                Spacing="2">
+                                                        <TextBlock FontWeight="SemiBold"
+                                                                   Text="{Binding DisplayName}" />
+                                                        <TextBlock FontSize="11"
+                                                                   Opacity="0.70"
+                                                                   Text="{Binding RuleId}" />
+                                                    </StackPanel>
+                                                    <CheckBox Grid.Column="1"
+                                                              Margin="14,0,16,0"
+                                                              VerticalAlignment="Center"
+                                                              IsChecked="{Binding IsEnabled, Mode=TwoWay}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Row="3"
+                  Margin="0,14,0,0"
+                  ColumnDefinitions="*,Auto,Auto">
+                <Button Grid.Column="1"
+                        Classes="neon"
+                        Padding="14,8"
+                        Click="CancelButton_OnClick"
+                        Content="Cancel" />
+                <Button Grid.Column="2"
+                        Margin="8,0,0,0"
+                        Classes="accent neon"
+                        Padding="14,8"
+                        Click="SaveButton_OnClick"
+                        Content="Save" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,369 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:dialogHostAvalonia="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:viewModels="clr-namespace:ReviewG33k.ViewModels"
+        mc:Ignorable="d"
+        x:Name="MainWindowRoot"
+        x:Class="ReviewG33k.Views.MainWindow"
+        Width="980" Height="700"
+        MinWidth="965" MinHeight="520"
+        Icon="/Assets/app.ico"
+        Title="ReviewG33k">
+    <Design.DataContext>
+        <viewModels:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Grid>
+        <Image Source="/Assets/main-window-bg.jpg" Stretch="UniformToFill" />
+        <Border>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#A6040B14" Offset="0" />
+                    <GradientStop Color="#74040A13" Offset="0.45" />
+                    <GradientStop Color="#BA040A13" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+        <Border Background="#1800CFFF"
+                Height="260"
+                VerticalAlignment="Top"
+                Opacity="0.28" />
+
+        <dialogHostAvalonia:DialogHost x:Name="Host"
+                                       OverlayBackground="#AA02070D">
+            <Grid Margin="28"
+                  RowDefinitions="Auto,Auto,*">
+                <Grid Grid.Row="0"
+                      Margin="0,8,0,22"
+                      ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="mainHeroEyebrow"
+                                   Text="BITBUCKET REVIEW WORKFLOW" />
+                        <TextBlock Classes="mainHeroTitle"
+                                   Text="ReviewG33k" />
+                        <TextBlock Classes="mainHeroBody"
+                                   TextWrapping="Wrap">
+                            <Run Text="Prepare " />
+                            <Run Text="pull requests" Foreground="#7CEB8B" />
+                            <Run Text=" and " />
+                            <Run Text="local repository reviews" Foreground="#7CEB8B" />
+                            <Run Text=" without disturbing your existing codebases." />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Button x:Name="ReviewSettingsButton"
+                            Grid.Column="1"
+                            Width="38"
+                            Height="38"
+                            Classes="neon"
+                            Padding="8"
+                            VerticalAlignment="Top"
+                            HorizontalAlignment="Right"
+                            Click="ReviewSettingsButton_OnClick"
+                            ToolTip.Tip="Choose review issue types">
+                        <materialIcons:MaterialIcon Width="20"
+                                                    Height="20"
+                                                    Kind="CogOutline" />
+                    </Button>
+                </Grid>
+
+                <Border Grid.Row="1"
+                        Margin="0,0,0,18"
+                        Classes="mainGlassPanel">
+                    <StackPanel Spacing="14">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="mainSectionTitle"
+                                       Text="Review Setup" />
+                            <TextBlock Classes="mainSectionHint"
+                                       Text="Choose the repository scope, review mode, and launch the isolated review workspace." />
+                        </StackPanel>
+
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Grid.IsSharedSizeScope="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"
+                                                  SharedSizeGroup="FormLabelColumn" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Margin="0,0,12,0"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Text="Repo Root Folder:" />
+                            <TextBox x:Name="RepositoryRootTextBox"
+                                     Grid.Row="0"
+                                     Grid.Column="1"
+                                     MinWidth="480"
+                                     Text="{Binding RepositoryRootPath, Mode=TwoWay}"
+                                     Watermark="Example: C:\source" />
+                            <Button Grid.Row="0"
+                                    Grid.Column="2"
+                                    Margin="10,0,0,0"
+                                    Classes="neon"
+                                    Command="{Binding BrowseRepositoryRootCommand}"
+                                    ToolTip.Tip="Browse folder&#10;Used as the parent location for local clones/worktrees.">
+                                <materialIcons:MaterialIcon Width="18"
+                                                            Height="18"
+                                                            Kind="FolderSearchOutline" />
+                            </Button>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"
+                                       HorizontalAlignment="Right"
+                                       Margin="0,0,12,0"
+                                       Text="Review Mode:" />
+
+                            <Grid Grid.Row="1"
+                                  Grid.Column="1"
+                                  Grid.ColumnSpan="2"
+                                  Margin="0,8,0,4"
+                                  ColumnDefinitions="Auto,Auto,24,Auto,Auto,Auto">
+                                <ComboBox x:Name="ReviewModeComboBox"
+                                          Grid.Column="0"
+                                          MinWidth="260"
+                                          SelectedIndex="{Binding ReviewModeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Pull Request" />
+                                    <ComboBoxItem Content="Local Committed Changes" />
+                                    <ComboBoxItem Content="Local Uncommitted Changes" />
+                                    <ComboBoxItem Content="Entire Local Repository" />
+                                </ComboBox>
+                                <Button x:Name="ReviewModeInfoButton"
+                                        Grid.Column="1"
+                                        Margin="4,0"
+                                        Width="28" Height="28"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        ToolTip.Tip="{Binding ReviewModeInfoTooltip}">
+                                    <materialIcons:MaterialIcon Width="18" Height="18"
+                                                                Foreground="#7DBFFF"
+                                                                Kind="InformationOutline" />
+                                </Button>
+                                <TextBlock Grid.Column="3"
+                                           Margin="0,0,12,0"
+                                           VerticalAlignment="Center"
+                                           IsVisible="{Binding ShowScanScopeOptions}"
+                                           Text="Scan Scope:" />
+                                <ComboBox x:Name="ScanScopeComboBox"
+                                          Grid.Column="4"
+                                          MinWidth="220"
+                                          IsVisible="{Binding ShowScanScopeOptions}"
+                                          SelectedIndex="{Binding ScanScopeIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="Changed lines" />
+                                    <ComboBoxItem Content="Full modified files" />
+                                </ComboBox>
+                                <Button x:Name="ScanScopeInfoButton"
+                                        Grid.Column="5"
+                                        Margin="4,0"
+                                        Width="28" Height="28"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        IsVisible="{Binding ShowScanScopeOptions}"
+                                        ToolTip.Tip="{Binding ScanScopeInfoTooltip}">
+                                    <materialIcons:MaterialIcon Width="18" Height="18"
+                                                                Foreground="#7DBFFF"
+                                                                Kind="InformationOutline" />
+                                </Button>
+                            </Grid>
+
+                            <TextBlock x:Name="PullRequestUrlLabelTextBlock"
+                                       Grid.Row="2"
+                                       Grid.Column="0"
+                                       Margin="0,10,12,0"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding ShowPullRequestInputs}"
+                                       Text="Pull Request:" />
+                            <TextBox x:Name="PullRequestUrlTextBox"
+                                     Grid.Row="2"
+                                     Grid.Column="1"
+                                     Margin="0,8,0,0"
+                                     DragDrop.AllowDrop="True"
+                                     IsVisible="{Binding ShowPullRequestInputs}"
+                                     Text="{Binding PullRequestUrl, Mode=TwoWay}"
+                                     Watermark="Paste or drop a Bitbucket PR URL" />
+                            <Button x:Name="OpenPullRequestButton"
+                                    Grid.Row="2"
+                                    Grid.Column="2"
+                                    Margin="10,10,0,0"
+                                    Classes="neon"
+                                    Padding="12,8"
+                                    Command="{Binding OpenPullRequestCommand}"
+                                    IsVisible="{Binding ShowPullRequestInputs}"
+                                    IsEnabled="{Binding CanOpenPullRequest}"
+                                    ToolTip.Tip="Open pull request URL">
+                                <materialIcons:MaterialIcon Width="18"
+                                                            Height="18"
+                                                            Kind="Web" />
+                            </Button>
+
+                            <TextBlock x:Name="PullRequestMetadataTextBlock"
+                                       Grid.Row="3"
+                                       Grid.Column="1"
+                                       Grid.ColumnSpan="2"
+                                       Margin="0,4,0,0"
+                                       IsVisible="{Binding ShowPullRequestMetadata}"
+                                       Text="{Binding PullRequestMetadataText}"
+                                       TextWrapping="Wrap" />
+
+                            <Grid x:Name="LocalReviewOptionsGrid"
+                                  Grid.Row="4"
+                                  Grid.Column="0"
+                                  Grid.ColumnSpan="3"
+                                  Margin="0,12,0,0"
+                                  IsVisible="{Binding !ShowPullRequestInputs}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"
+                                                      SharedSizeGroup="FormLabelColumn" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Margin="0,0,12,0"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Text="Local Repo:" />
+                                <ComboBox x:Name="LocalRepositoryComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="360"
+                                          HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding LocalRepositoryOptions}"
+                                          MaxDropDownHeight="320"
+                                          SelectionChanged="LocalRepositoryComboBox_OnSelectionChanged"
+                                          DropDownOpened="LocalRepositoryComboBox_OnDropDownOpened"
+                                          ToolTip.Tip="{Binding LocalRepositoryPath}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" ToolTip.Tip="{Binding FullPath}">
+                                                <TextBlock Text="{Binding AncestorLabel}" Foreground="{DynamicResource BrushText1}" />
+                                                <TextBlock Text="{Binding RepositoryName}" Foreground="#E9BC70" FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock x:Name="LocalBaseBranchLabelTextBlock"
+                                           Grid.Column="2"
+                                           Margin="14,0,8,0"
+                                           IsVisible="{Binding ShowLocalBaseBranch}"
+                                           VerticalAlignment="Center"
+                                           Text="Base Branch:" />
+                                <ComboBox x:Name="LocalBaseBranchComboBox"
+                                          Grid.Column="3"
+                                          Width="220"
+                                          IsVisible="{Binding ShowLocalBaseBranch}"
+                                          ItemsSource="{Binding LocalBaseBranchOptions}"
+                                          SelectedItem="{Binding LocalBaseBranch, Mode=TwoWay}" />
+                            </Grid>
+
+                            <Grid Grid.Row="5"
+                                  Grid.Column="1"
+                                  Grid.ColumnSpan="2"
+                                  Margin="0,12,0,0"
+                                  ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+                                <Button x:Name="PrepareReviewButton"
+                                        Grid.Column="0"
+                                        Classes="accent neon"
+                                        Command="{Binding PrepareReviewCommand}"
+                                        IsEnabled="{Binding CanPrepareReview}"
+                                        Content="{Binding PrepareReviewButtonText}" />
+                                <Button x:Name="PostPullRequestReviewStampButton"
+                                        Grid.Column="1"
+                                        Margin="8,0,0,0"
+                                        Classes="neon"
+                                        Padding="12,8"
+                                        VerticalAlignment="Center"
+                                        Content="Stamp PR"
+                                        Command="{Binding PostPullRequestReviewStampCommand}"
+                                        IsEnabled="{Binding CanPostPullRequestReviewStamp}"
+                                        IsVisible="{Binding ShowPullRequestInputs}"
+                                        ToolTip.Tip="Post a general Bitbucket PR review comment"/>
+                                <ProgressBar Grid.Column="2" x:Name="BusyIndicatorSpinner"
+                                             Width="120"
+                                             Margin="8,0"
+                                             VerticalAlignment="Center"
+                                             IsVisible="{Binding IsBusy}"
+                                             IsIndeterminate="{Binding BusyProgressIsIndeterminate}"
+                                             Maximum="{Binding BusyProgressMaximum}"
+                                             Value="{Binding BusyProgressValue}" />
+                                <Button x:Name="CancelProcessingButton"
+                                        Grid.Column="3"
+                                        Margin="0,0,8,0"
+                                        Classes="neon"
+                                        Padding="8"
+                                        VerticalAlignment="Center"
+                                        IsVisible="{Binding IsBusy}"
+                                        IsEnabled="{Binding CanCancelProcessing}"
+                                        Command="{Binding CancelProcessingCommand}"
+                                        ToolTip.Tip="Cancel current operation">
+                                    <Grid>
+                                        <materialIcons:MaterialIcon x:Name="CancelProcessingIcon"
+                                                                    IsVisible="{Binding !ShowCancelStoppingText}"
+                                                                    Width="18"
+                                                                    Height="18"
+                                                                    Kind="Cancel" />
+                                        <TextBlock x:Name="CancelProcessingStoppingTextBlock"
+                                                   IsVisible="{Binding ShowCancelStoppingText}"
+                                                   Text="Stopping..." />
+                                    </Grid>
+                                </Button>
+                                <Button Grid.Column="4" Content="DiffLens"
+                                        HorizontalAlignment="Left" Margin="8,0,12,0"
+                                        Classes="neon" Padding="12,8"
+                                        IsEnabled="{Binding CanOpenDiffLens}"
+                                        ToolTip.Tip="Explore changes and review findings (review the PR first)"
+                                        Click="DiffLensButton_OnClick" />
+                                <Button x:Name="OpenSolutionButton"
+                                        Grid.Column="5"
+                                        Classes="neon"
+                                        Padding="12,8"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Right"
+                                        Command="{Binding OpenSolutionCommand}"
+                                        IsEnabled="{Binding CanOpenSolution}"
+                                        Content="Open Solution" />
+                            </Grid>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="2"
+                        Classes="mainGlassPanel">
+                    <Grid RowDefinitions="Auto,Auto,*">
+                        <TextBlock Classes="mainSectionTitle"
+                                   Text="Session Log" />
+                        <TextBlock x:Name="StatusTextBlock"
+                                   Grid.Row="1"
+                                   Margin="0,4,0,10"
+                                   Foreground="#DCEBFF"
+                                   Text="{Binding StatusText}" />
+                        <ListBox x:Name="LogListBox"
+                                 Grid.Row="2"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.Styles>
+                                <Style Selector="ListBox#LogListBox ListBoxItem">
+                                    <Setter Property="Padding" Value="2" />
+                                    <Setter Property="Margin" Value="0" />
+                                </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Text}"
+                                               Foreground="{Binding Foreground}"
+                                               TextWrapping="NoWrap"
+                                               VerticalAlignment="Center"
+                                               FontFamily="Consolas, Courier New, monospace" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+            </Grid>
+        </dialogHostAvalonia:DialogHost>
+    </Grid>
+</Window>

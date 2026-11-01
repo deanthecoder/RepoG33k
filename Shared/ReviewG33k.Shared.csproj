@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>ReviewG33k</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Services/**/*.cs;../Models/**/*.cs;../ViewModels/**/*.cs;../Properties/*.cs" />
+    <Compile Include="../Views/**/*.cs" Exclude="../Views/App.axaml.cs" />
+    <AvaloniaXaml Include="../Views/**/*.axaml" Exclude="../Views/App.axaml" Link="Views/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../Assets/**" Link="Assets/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.0.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
+    <PackageReference Include="DiffPlex" Version="1.7.2" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.2.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <ProjectReference Include="../DTC.Core/DTC.Core/DTC.Core.csproj" />
+  </ItemGroup>
+</Project>

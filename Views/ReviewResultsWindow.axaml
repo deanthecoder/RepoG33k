@@ -1,0 +1,299 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="using:ReviewG33k.Views"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        mc:Ignorable="d"
+        x:Name="ReviewResultsWindowRoot"
+        x:Class="ReviewG33k.Views.ReviewResultsWindow"
+        Width="980"
+        Height="760"
+        MinWidth="700"
+        MinHeight="580"
+        Title="Review Results">
+    <Grid>
+        <Image Source="/Assets/child-window-bg.jpg"
+               Stretch="UniformToFill" />
+        <Border>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#B2040A13" Offset="0" />
+                    <GradientStop Color="#90040A13" Offset="0.4" />
+                    <GradientStop Color="#C8040911" Offset="1" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Grid x:Name="WindowContentGrid"
+              Margin="24"
+              RowDefinitions="Auto,Auto,*">
+            <Grid Grid.Row="0"
+                  Margin="0,6,0,18"
+                  ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="5">
+                    <TextBlock Classes="mainHeroEyebrow"
+                               Text="REVIEW RESULTS" />
+                    <TextBlock Classes="mainSectionTitle"
+                               FontSize="28"
+                               Text="Findings" />
+                </StackPanel>
+                <TextBlock x:Name="SummaryTextBlock"
+                           Grid.Column="1"
+                           VerticalAlignment="Bottom"
+                           HorizontalAlignment="Right"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="{Binding SummaryText}" />
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  Margin="0,0,0,6"
+                  ColumnDefinitions="34,148,*,Auto">
+                <TextBlock Grid.Column="1"
+                           Margin="16,0,0,0"
+                           FontWeight="SemiBold"
+                           Text="Category" />
+                <TextBlock Grid.Column="2"
+                           Margin="24,0,0,0"
+                           FontWeight="SemiBold"
+                           Text="Issue" />
+            </Grid>
+
+            <Grid Grid.Row="2"
+                  RowDefinitions="*,Auto,Auto"
+                  MinHeight="220">
+                <Border Grid.Row="0"
+                        Classes="mainGlassPanel"
+                        MinHeight="140"
+                        Padding="10">
+                    <ListBox x:Name="ResultsListBox"
+                             ItemsSource="{Binding Rows}"
+                             SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                             BorderThickness="0"
+                             Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="views:ReviewResultRow">
+                            <Grid Margin="0,1"
+                                  Background="Transparent"
+                                  ColumnDefinitions="34,148,*,Auto">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="{Binding UntickSameTypeMenuHeader}"
+                                                  Command="{Binding #ReviewResultsWindowRoot.UntickSameTypeCommand}"
+                                                  CommandParameter="{Binding .}" />
+                                        <MenuItem Header="{Binding TickSameTypeMenuHeader}"
+                                                  Command="{Binding #ReviewResultsWindowRoot.TickSameTypeCommand}"
+                                                  CommandParameter="{Binding .}" />
+                                        <Separator />
+                                        <MenuItem Header="{Binding TickSameFileMenuHeader}"
+                                                  Command="{Binding #ReviewResultsWindowRoot.TickSameFileCommand}"
+                                                  CommandParameter="{Binding .}" />
+                                        <MenuItem Header="{Binding UntickSameFileMenuHeader}"
+                                                  Command="{Binding #ReviewResultsWindowRoot.UntickSameFileCommand}"
+                                                  CommandParameter="{Binding .}" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                <CheckBox Grid.Column="0"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          IsChecked="{Binding IsIncluded}" />
+                                <Border Grid.Column="1"
+                                        Classes="sevPill"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Left">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Text="{Binding CategoryText}" />
+                                </Border>
+                                <StackPanel Grid.Column="2"
+                                            Margin="8,2,8,2"
+                                            Spacing="1">
+                                    <TextBlock Text="{Binding IssueSummary}"
+                                               Foreground="{Binding IssueForeground}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap"
+                                               ToolTip.Tip="{Binding IssueFull}" />
+                                    <TextBlock Text="{Binding IssueLocation}"
+                                               Foreground="{Binding IssueLocationForeground}"
+                                               FontSize="11"
+                                               HorizontalAlignment="Left"
+                                               TextAlignment="Left"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap"
+                                               ToolTip.Tip="{Binding IssueLocation}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="3"
+                                            Margin="8,0,8,0"
+                                            Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            Spacing="6">
+                                    <Button Content="{Binding IgnoreActionText}"
+                                            IsVisible="{Binding CanIgnore}"
+                                            Command="{Binding #ReviewResultsWindowRoot.ToggleIgnoredCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    <Button Padding="6"
+                                            Classes="neon"
+                                            Command="{Binding #ReviewResultsWindowRoot.FixFindingCommand}"
+                                            CommandParameter="{Binding .}"
+                                            IsVisible="{Binding ShowFixButton}"
+                                            IsEnabled="{Binding CanFixActive}"
+                                            ToolTip.Tip="Apply a local quick-fix for this issue">
+                                        <materialIcons:MaterialIcon Width="18"
+                                                                    Height="18"
+                                                                    Kind="MagicWand" />
+                                    </Button>
+                                    <Button Padding="6"
+                                            Classes="neon"
+                                            Command="{Binding #ReviewResultsWindowRoot.CreateCodexPromptCommand}"
+                                            CommandParameter="{Binding .}"
+                                            IsVisible="{Binding ShowCodexPromptButton}"
+                                            IsEnabled="{Binding CanCodexPromptActive}"
+                                            Background="Transparent"
+                                            ToolTip.Tip="Copy a ready-to-paste Codex prompt for this issue">
+                                        <Viewbox Width="18" Height="18">
+                                            <Canvas Width="512" Height="512">
+                                                <Path Fill="White"
+                                                      Data="M474.123 209.81c11.525-34.577 7.569-72.423-10.838-103.904-27.696-48.168-83.433-72.94-137.794-61.414a127.14 127.14 0 00-95.475-42.49c-55.564 0-104.936 35.781-122.139 88.593-35.781 7.397-66.574 29.76-84.637 61.414-27.868 48.167-21.503 108.72 15.826 150.007-11.525 34.578-7.569 72.424 10.838 103.733 27.696 48.34 83.433 73.111 137.966 61.585 24.084 27.18 58.833 42.835 95.303 42.663 55.564 0 104.936-35.782 122.139-88.594 35.782-7.397 66.574-29.76 84.465-61.413 28.04-48.168 21.676-108.722-15.654-150.008v-.172zm-39.567-87.218c11.01 19.267 15.139 41.803 11.354 63.65-.688-.516-2.064-1.204-2.924-1.72l-101.152-58.49a16.965 16.965 0 00-16.687 0L206.621 194.5v-50.232l97.883-56.597c45.587-26.32 103.732-10.666 130.052 34.921zm-227.935 104.42l49.888-28.9 49.887 28.9v57.63l-49.887 28.9-49.888-28.9v-57.63zm23.223-191.81c22.364 0 43.867 7.742 61.07 22.02-.688.344-2.064 1.204-3.097 1.72L186.666 117.26c-5.161 2.925-8.258 8.43-8.258 14.45v136.934l-43.523-25.116V130.333c0-52.64 42.491-95.13 95.131-95.302l-.172.172zM52.14 168.697c11.182-19.268 28.557-34.062 49.544-41.803V247.14c0 6.02 3.097 11.354 8.258 14.45l118.354 68.295-43.695 25.288-97.711-56.425c-45.415-26.32-61.07-84.465-34.75-130.052zm26.665 220.71c-11.182-19.095-15.139-41.802-11.354-63.65.688.516 2.064 1.204 2.924 1.72l101.152 58.49a16.965 16.965 0 0016.687 0l118.354-68.467v50.232l-97.883 56.425c-45.587 26.148-103.732 10.665-130.052-34.75h.172zm204.54 87.39c-22.192 0-43.867-7.741-60.898-22.02a62.439 62.439 0 003.097-1.72l101.152-58.317c5.16-2.924 8.429-8.43 8.257-14.45V243.527l43.523 25.116v113.022c0 52.64-42.663 95.303-95.131 95.303v-.172zM461.22 343.303c-11.182 19.267-28.729 34.061-49.544 41.63V264.687c0-6.021-3.097-11.526-8.257-14.45L284.893 181.77l43.523-25.116 97.883 56.424c45.587 26.32 61.07 84.466 34.75 130.053l.172.172z" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <Button
+                                            Classes="neon"
+                                            Command="{Binding #ReviewResultsWindowRoot.CommentFindingCommand}"
+                                            CommandParameter="{Binding .}"
+                                            IsVisible="{Binding ShowCommentButton}"
+                                            IsEnabled="{Binding CanCommentActive}"
+                                            ToolTip.Tip="Post this issue as a Bitbucket PR inline comment"
+                                            Content="Comment" />
+                                </StackPanel>
+                            </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Grid Grid.Row="1"
+                      Margin="0,12,0,4"
+                      ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                    <Button x:Name="ToggleAllButton"
+                            Grid.Column="0"
+                            Classes="neon"
+                            IsEnabled="{Binding CanToggleAll}"
+                            Command="{Binding ToggleAllCommand}"
+                            Content="Toggle All" />
+                    <Button Grid.Column="1"
+                            Classes="neon"
+                            Margin="8,0,0,0"
+                            Command="{Binding ShowCategoryBreakdownCommand}"
+                            ToolTip.Tip="Show category chart and hide or show issue categories">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Width="18"
+                                                        Height="18"
+                                                        Kind="ChartPie" />
+                            <TextBlock VerticalAlignment="Center"
+                                       Text="Categories" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ExportToClipboardButton"
+                            Grid.Column="3"
+                            Classes="neon"
+                            Margin="8,0,0,0"
+                            IsEnabled="{Binding CanExportToClipboard}"
+                            Command="{Binding ExportToClipboardCommand}"
+                            ToolTip.Tip="Copy included findings to clipboard">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Viewbox Width="18" Height="18">
+                                <Canvas Width="512" Height="512">
+                                    <Path Fill="White"
+                                          Data="M474.123 209.81c11.525-34.577 7.569-72.423-10.838-103.904-27.696-48.168-83.433-72.94-137.794-61.414a127.14 127.14 0 00-95.475-42.49c-55.564 0-104.936 35.781-122.139 88.593-35.781 7.397-66.574 29.76-84.637 61.414-27.868 48.167-21.503 108.72 15.826 150.007-11.525 34.578-7.569 72.424 10.838 103.733 27.696 48.34 83.433 73.111 137.966 61.585 24.084 27.18 58.833 42.835 95.303 42.663 55.564 0 104.936-35.782 122.139-88.594 35.782-7.397 66.574-29.76 84.465-61.413 28.04-48.168 21.676-108.722-15.654-150.008v-.172zm-39.567-87.218c11.01 19.267 15.139 41.803 11.354 63.65-.688-.516-2.064-1.204-2.924-1.72l-101.152-58.49a16.965 16.965 0 00-16.687 0L206.621 194.5v-50.232l97.883-56.597c45.587-26.32 103.732-10.666 130.052 34.921zm-227.935 104.42l49.888-28.9 49.887 28.9v57.63l-49.887 28.9-49.888-28.9v-57.63zm23.223-191.81c22.364 0 43.867 7.742 61.07 22.02-.688.344-2.064 1.204-3.097 1.72L186.666 117.26c-5.161 2.925-8.258 8.43-8.258 14.45v136.934l-43.523-25.116V130.333c0-52.64 42.491-95.13 95.131-95.302l-.172.172zM52.14 168.697c11.182-19.268 28.557-34.062 49.544-41.803V247.14c0 6.02 3.097 11.354 8.258 14.45l118.354 68.295-43.695 25.288-97.711-56.425c-45.415-26.32-61.07-84.465-34.75-130.052zm26.665 220.71c-11.182-19.095-15.139-41.802-11.354-63.65.688.516 2.064 1.204 2.924 1.72l101.152 58.49a16.965 16.965 0 0016.687 0l118.354-68.467v50.232l-97.883 56.425c-45.587 26.148-103.732 10.665-130.052-34.75h.172zm204.54 87.39c-22.192 0-43.867-7.741-60.898-22.02a62.439 62.439 0 003.097-1.72l101.152-58.317c5.16-2.924 8.429-8.43 8.257-14.45V243.527l43.523 25.116v113.022c0 52.64-42.663 95.303-95.131 95.303v-.172zM461.22 343.303c-11.182 19.267-28.729 34.061-49.544 41.63V264.687c0-6.021-3.097-11.526-8.257-14.45L284.893 181.77l43.523-25.116 97.883 56.424c45.587 26.32 61.07 84.466 34.75 130.053l.172.172z" />
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock VerticalAlignment="Center"
+                                       Text="Export To Clipboard" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="DiffLensResultsButton" Grid.Column="5"
+                            Classes="neon" Margin="8,0,0,0" Content="Open in DiffLens"
+                            ToolTip.Tip="Show only ticked findings on the local repository canvas" />
+                    <Button x:Name="CommentSelectedButton"
+                            Grid.Column="4"
+                            Classes="neon"
+                            IsEnabled="{Binding CanCommentSelected}"
+                            Command="{Binding CommentSelectedCommand}"
+                            Content="Comment Selected" />
+                </Grid>
+
+                <Border Grid.Row="2"
+                        Classes="mainGlassPanel"
+                        Margin="0,8,0,0"
+                        Padding="10">
+                    <Grid RowDefinitions="Auto,*">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="PreviewHeaderTextBlock"
+                                           Margin="0,0,0,6"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Text="{Binding PreviewHeaderText}" />
+                                <Button x:Name="CopyPreviewFileNameButton"
+                                        Classes="neon"
+                                        Margin="8,0,0,6"
+                                        Padding="8,0"
+                                        FontSize="13"
+                                        IsEnabled="{Binding CanCopyPreviewFileName}"
+                                        Command="{Binding CopyPreviewFileNameCommand}"
+                                        VerticalContentAlignment="Center"
+                                        ToolTip.Tip="{Binding CopyPreviewFileNameToolTip}"
+                                        Content="⧉" />
+                            </StackPanel>
+                            <Button x:Name="OpenSelectedButton"
+                                    Grid.Column="1"
+                                    Classes="neon"
+                                    Margin="8,0,0,6"
+                                    IsEnabled="{Binding CanOpenSelected}"
+                                    Command="{Binding OpenSelectedCommand}"
+                                    ToolTip.Tip="{Binding OpenSelectedToolTip}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon x:Name="OpenSelectedTargetIcon"
+                                                                Width="16"
+                                                                Height="16"
+                                                                Kind="{Binding OpenSelectedTargetIconKind}" />
+                                    <TextBlock x:Name="OpenSelectedTargetText"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding OpenSelectedTargetText}" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="OpenTargetMenuButton"
+                                    Grid.Column="2"
+                                    Classes="neon"
+                                    Margin="4,0,0,6"
+                                    Padding="8,0"
+                                    Command="{Binding #ReviewResultsWindowRoot.OpenTargetMenuCommand}"
+                                    ToolTip.Tip="Choose how View Code opens files">
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="OpenTargetMenu" />
+                                </Button.ContextMenu>
+                                <materialIcons:MaterialIcon Width="16"
+                                                            Height="16"
+                                                            Kind="ChevronDown" />
+                            </Button>
+                        </Grid>
+                        <TextBox x:Name="PreviewTextBox"
+                                 Grid.Row="1"
+                                 Height="180"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 Text="{Binding PreviewText}"
+                                 TextWrapping="NoWrap"
+                                 FontFamily="Consolas, Courier New, monospace"
+                                 ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

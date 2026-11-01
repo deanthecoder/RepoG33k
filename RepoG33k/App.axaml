@@ -1,0 +1,47 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="RepoG33k.App" Name="RepoG33k" RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <!-- Keep Fluent's Expander template styles from changing our custom header on press. -->
+    <ControlTheme x:Key="SectionExpanderTheme" TargetType="Expander" />
+    <ControlTheme x:Key="SectionToggleTheme" TargetType="ToggleButton" />
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <icons:MaterialIconStyles />
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <Style Selector="Window"><Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" /><Setter Property="FontSize" Value="13" /><Setter Property="Background" Value="#10161F" /><Setter Property="Foreground" Value="#D9E3EE" /></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="11,7" /><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#79DDC4" /><Setter Property="Foreground" Value="#10161F" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
+    <Style Selector="Button.nav"><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="FontSize" Value="12" /><Setter Property="Padding" Value="10,7" /></Style>
+    <Style Selector="Button.selected"><Setter Property="Background" Value="#233E3B" /><Setter Property="Foreground" Value="#79DDC4" /></Style>
+    <Style Selector="Button.accent"><Setter Property="Foreground" Value="#79DDC4" /><Setter Property="BorderBrush" Value="#365B52" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="Expander">
+      <Setter Property="Theme" Value="{StaticResource SectionExpanderTheme}" />
+      <Setter Property="MinHeight" Value="0" /><Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template"><ControlTemplate><StackPanel>
+        <ToggleButton Classes="section-toggle" AutomationProperties.Name="{TemplateBinding Header}" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" HorizontalContentAlignment="Stretch">
+          <Grid ColumnDefinitions="22,*"><Path Classes="disclosure" Data="M 2,1 L 8,7 L 2,13" Width="7" Height="11" Stretch="Uniform" Stroke="#A9BACB" StrokeThickness="1.7" HorizontalAlignment="Left" VerticalAlignment="Center" /><ContentPresenter Grid.Column="1" Content="{TemplateBinding Header}" VerticalAlignment="Center" /></Grid>
+        </ToggleButton>
+        <ContentPresenter Content="{TemplateBinding Content}" IsVisible="{TemplateBinding IsExpanded}" />
+      </StackPanel></ControlTemplate></Setter>
+    </Style>
+    <Style Selector="ToggleButton.section-toggle">
+      <Setter Property="Theme" Value="{StaticResource SectionToggleTheme}" />
+      <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="8,7" /><Setter Property="FontSize" Value="11" /><Setter Property="Foreground" Value="#8B9DAF" /><Setter Property="MinHeight" Value="32" /><Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Template"><ControlTemplate><Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}" CornerRadius="4"><ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" /></Border></ControlTemplate></Setter>
+    </Style>
+    <Style Selector="Expander#CommitPanel /template/ ToggleButton.section-toggle"><Setter Property="MinHeight" Value="26" /><Setter Property="Padding" Value="6,3" /></Style>
+    <Style Selector="ToggleButton.section-toggle:checked Path.disclosure"><Setter Property="RenderTransform" Value="rotate(90deg)" /></Style>
+    <Style Selector="Path.disclosure"><Setter Property="RenderTransformOrigin" Value="50%,50%" /></Style>
+    <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#182F2B" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#28544C" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#366D61" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="5" /><Setter Property="Background" Value="#10161F" /><Setter Property="BorderBrush" Value="#2B3949" /><Setter Property="FontSize" Value="12" /></Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#8B9DAF" /><Setter Property="FontSize" Value="11" /></Style>
+  </Application.Styles>
+  <NativeMenu.Menu>
+    <NativeMenu><NativeMenuItem Header="About RepoG33k" Command="{Binding AboutCommand}" /></NativeMenu>
+  </NativeMenu.Menu>
+</Application>

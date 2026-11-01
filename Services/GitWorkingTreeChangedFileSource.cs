@@ -1,0 +1,281 @@
+// Code authored by Dean Edis (DeanTheCoder).
+// Anyone is free to copy, modify, use, compile, or distribute this software,
+// either in source code form or as a compiled binary, for any purpose.
+//
+// If you modify the code, please retain this copyright header,
+// and consider contributing back to the repository or letting us know
+// about your modifications. Your contributions are valued!
+//
+// THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using DTC.Core.Extensions;
+using Support = ReviewG33k.Services.Checks.Support;
+
+namespace ReviewG33k.Services;
+
+/// <summary>
+/// Loads analyzable changed files from local uncommitted/untracked working-tree changes.
+/// </summary>
+public sealed class GitWorkingTreeChangedFileSource : ICodeReviewChangedFileSource
+{
+    private readonly GitCommandRunner m_gitCommandRunner;
+    private readonly string m_repositoryPath;
+
+    public GitWorkingTreeChangedFileSource(GitCommandRunner gitCommandRunner, string repositoryPath)
+    {
+        m_gitCommandRunner = gitCommandRunner ?? throw new ArgumentNullException(nameof(gitCommandRunner));
+        m_repositoryPath = repositoryPath ?? string.Empty;
+    }
+
+    public async Task<CodeReviewChangedFileSourceResult> LoadAsync(Action<string> progressLogger = null)
+    {
+        var info = new List<string>();
+        var repositoryPathInfo = m_repositoryPath.ToDir();
+
+        if (string.IsNullOrWhiteSpace(m_repositoryPath) || !repositoryPathInfo.Exists())
+        {
+            info.Add("Code review scan skipped: Local repository path not found.");
+            return new CodeReviewChangedFileSourceResult([], info);
+        }
+
+        progressLogger?.Invoke("Code review scan: Enumerating tracked local changes...");
+        var trackedChangesResult = await m_gitCommandRunner.RunAsync(
+            m_repositoryPath,
+            "diff",
+            "--name-status",
+            "--ignore-cr-at-eol",
+            "--ignore-space-at-eol",
+            "--find-renames",
+            "HEAD");
+        if (!trackedChangesResult.IsSuccess)
+        {
+            info.Add("Code review scan skipped: Unable to enumerate local working tree changes.");
+            return new CodeReviewChangedFileSourceResult([], info);
+        }
+
+        var trackedEntries = ParseNameStatusOutput(trackedChangesResult.StandardOutput);
+        progressLogger?.Invoke("Code review scan: Enumerating untracked local files...");
+        var untrackedResult = await m_gitCommandRunner.RunAsync(
+            m_repositoryPath,
+            "ls-files",
+            "--others",
+            "--exclude-standard");
+        var untrackedEntries = untrackedResult.IsSuccess
+            ? ParseUntrackedOutput(untrackedResult.StandardOutput)
+            : [];
+
+        var allChangedFileEntries = MergeChangedFileEntries(trackedEntries, untrackedEntries).ToArray();
+        if (allChangedFileEntries.Length == 0)
+        {
+            info.Add("Code review scan: No local uncommitted or untracked changes detected.");
+            return new CodeReviewChangedFileSourceResult([], info);
+        }
+
+        var changedFileEntries = allChangedFileEntries
+            .Where(entry => Support.CodeReviewFileClassification.IsAnalyzableChangedPath(entry.Path))
+            .ToArray();
+        if (changedFileEntries.Length == 0)
+        {
+            info.Add("Code review scan: No local changed analyzable files detected.");
+            return new CodeReviewChangedFileSourceResult([], info);
+        }
+
+        progressLogger?.Invoke($"Code review scan: Loading {changedFileEntries.Length} local changed file(s)...");
+        var changedFiles = new List<CodeReviewChangedFile>(changedFileEntries.Length);
+        for (var index = 0; index < changedFileEntries.Length; index++)
+        {
+            var entry = changedFileEntries[index];
+            var fullPath = repositoryPathInfo.GetFile(entry.Path.Replace('/', Path.DirectorySeparatorChar));
+            if (!fullPath.Exists())
+                continue;
+
+            var baselineRevision = entry.Status.Equals("A", StringComparison.OrdinalIgnoreCase) ? null : "HEAD";
+            var content = await GitChangedFileContent.LoadAsync(
+                m_gitCommandRunner,
+                m_repositoryPath,
+                fullPath,
+                baselineRevision,
+                entry.Path);
+            var lines = SplitLines(content.Text);
+            var addedLineNumbers = entry.Status.Equals("A", StringComparison.OrdinalIgnoreCase)
+                ? new HashSet<int>(Enumerable.Range(1, lines.Count))
+                : await GetAddedLineNumbersAsync("HEAD", entry.Path);
+
+            changedFiles.Add(new CodeReviewChangedFile(
+                entry.Status,
+                entry.Path,
+                fullPath.FullName,
+                content.Text,
+                lines,
+                addedLineNumbers,
+                content.BaselineText,
+                content.Bytes,
+                content.BaselineBytes));
+
+            var filesProcessed = index + 1;
+            if (ShouldLogFileProgress(filesProcessed, changedFileEntries.Length))
+            {
+                progressLogger?.Invoke(
+                    $"Code review scan: Loaded {filesProcessed}/{changedFileEntries.Length} local changed file(s)...");
+            }
+        }
+
+        if (changedFiles.Count == 0)
+        {
+            info.Add("Code review scan: No analyzable changed files found.");
+            return new CodeReviewChangedFileSourceResult([], info);
+        }
+
+        info.Add($"Code review scan: Analyzing {changedFiles.Count} local changed analyzable file(s).");
+        return new CodeReviewChangedFileSourceResult(changedFiles, info);
+    }
+
+    private async Task<HashSet<int>> GetAddedLineNumbersAsync(string diffRange, string relativePath)
+    {
+        var result = await m_gitCommandRunner.RunAsync(
+            m_repositoryPath,
+            "diff",
+            "--unified=0",
+            "--no-color",
+            "--ignore-cr-at-eol",
+            "--ignore-space-at-eol",
+            diffRange,
+            "--",
+            relativePath);
+        if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.StandardOutput))
+            return [];
+
+        return ParseAddedLineNumbers(result.StandardOutput);
+    }
+
+    private static HashSet<int> ParseAddedLineNumbers(string diffText)
+    {
+        var addedLines = new HashSet<int>();
+        var lines = diffText.Replace("\r\n", "\n").Split('\n');
+
+        var currentNewLine = 0;
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("@@ ", StringComparison.Ordinal))
+            {
+                if (TryParseHunkStart(line, out var newStart))
+                    currentNewLine = newStart;
+                continue;
+            }
+
+            if (line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal))
+            {
+                addedLines.Add(currentNewLine);
+                currentNewLine++;
+                continue;
+            }
+
+            if (line.StartsWith('-') && !line.StartsWith("---", StringComparison.Ordinal))
+                continue;
+
+            if (line.StartsWith(' '))
+                currentNewLine++;
+        }
+
+        return addedLines;
+    }
+
+    private static bool TryParseHunkStart(string hunkHeader, out int newStart)
+    {
+        newStart = 0;
+        var plusIndex = hunkHeader.IndexOf('+');
+        if (plusIndex < 0)
+            return false;
+
+        var commaIndex = hunkHeader.IndexOf(',', plusIndex);
+        var spaceIndex = hunkHeader.IndexOf(' ', plusIndex);
+        var endIndex = commaIndex >= 0 ? commaIndex : spaceIndex;
+        if (endIndex < 0)
+            return false;
+
+        var numberText = hunkHeader[(plusIndex + 1)..endIndex];
+        return int.TryParse(numberText, out newStart);
+    }
+
+    private static IReadOnlyList<(string Status, string Path)> ParseNameStatusOutput(string output)
+    {
+        var entries = new List<(string Status, string Path)>();
+        if (string.IsNullOrWhiteSpace(output))
+            return entries;
+
+        foreach (var rawLine in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = rawLine.Split('\t');
+            if (parts.Length < 2)
+                continue;
+
+            var status = parts[0].Trim();
+            if (string.IsNullOrWhiteSpace(status))
+                continue;
+
+            var normalizedStatus = status[..1];
+            var path = normalizedStatus.Equals("R", StringComparison.OrdinalIgnoreCase) && parts.Length >= 3
+                ? parts[2]
+                : parts[1];
+
+            if (!string.IsNullOrWhiteSpace(path))
+                entries.Add((normalizedStatus, path));
+        }
+
+        return entries;
+    }
+
+    private static IReadOnlyList<(string Status, string Path)> ParseUntrackedOutput(string output)
+    {
+        var entries = new List<(string Status, string Path)>();
+        if (string.IsNullOrWhiteSpace(output))
+            return entries;
+
+        foreach (var rawLine in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var path = rawLine.Trim();
+            if (!string.IsNullOrWhiteSpace(path))
+                entries.Add(("A", path));
+        }
+
+        return entries;
+    }
+
+    private static IReadOnlyList<(string Status, string Path)> MergeChangedFileEntries(
+        IReadOnlyList<(string Status, string Path)> baseEntries,
+        IReadOnlyList<(string Status, string Path)> additionalEntries)
+    {
+        var merged = new Dictionary<string, (string Status, string Path)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in baseEntries ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry.Path))
+                continue;
+
+            merged[RepositoryUtilities.NormalizeRepoPath(entry.Path)] = entry;
+        }
+
+        foreach (var entry in additionalEntries ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry.Path))
+                continue;
+
+            var key = RepositoryUtilities.NormalizeRepoPath(entry.Path);
+            if (!merged.ContainsKey(key))
+                merged[key] = entry;
+        }
+
+        return merged.Values.ToArray();
+    }
+
+    private static IReadOnlyList<string> SplitLines(string text) =>
+        (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+    private static bool ShouldLogFileProgress(int filesProcessed, int totalFiles) =>
+        filesProcessed == 1 || filesProcessed == totalFiles || filesProcessed % 25 == 0;
+}
