@@ -185,6 +185,7 @@ internal sealed class DiffLensView : UserControl
             m_canvas.Fit();
         };
         ToolTip.SetTip(fit, "Fit all changed files.");
+        actions.Children.Add(filesToggle);
         actions.Children.Add(fit);
         ToolTip.SetTip(m_refresh, "Refresh files from disk (F5)");
         Avalonia.Automation.AutomationProperties.SetName(m_refresh, "Refresh files from disk");
@@ -235,8 +236,6 @@ internal sealed class DiffLensView : UserControl
         DockPanel.SetDock(actions, Dock.Left);
         actions.Margin = new Thickness(0, 0, 12, 0);
         m_status.VerticalAlignment = VerticalAlignment.Center;
-        DockPanel.SetDock(filesToggle, Dock.Left);
-        footer.Children.Add(filesToggle);
         footer.Children.Add(actions);
         DockPanel.SetDock(m_findingsToggle, Dock.Right);
         footer.Children.Add(m_findingsToggle);

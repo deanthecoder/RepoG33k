@@ -11,9 +11,14 @@
     <icons:MaterialIconStyles />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
     <Style Selector="Window"><Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" /><Setter Property="FontSize" Value="13" /><Setter Property="Background" Value="#10161F" /><Setter Property="Foreground" Value="#D9E3EE" /></Style>
-    <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="11,7" /><Setter Property="Background" Value="Transparent" /></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="11,7" /><Setter Property="Background" Value="#202C3A" /><Setter Property="BorderBrush" Value="#38495B" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="Button:not(.nav):not(.primary):not(.accent):pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#2C3D50" /><Setter Property="BorderBrush" Value="#627B94" /></Style>
+    <Style Selector="Button:not(.nav):not(.primary):not(.accent):pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#172330" /><Setter Property="BorderBrush" Value="#79DDC4" /></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="#79DDC4" /><Setter Property="Foreground" Value="#10161F" /><Setter Property="FontWeight" Value="SemiBold" /></Style>
-    <Style Selector="Button.nav"><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="FontSize" Value="12" /><Setter Property="Padding" Value="10,7" /></Style>
+    <Style Selector="Button.workspace-entry"><Setter Property="Height" Value="36" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+    <Style Selector="ToggleButton.commit-amend"><Setter Property="CornerRadius" Value="6" /><Setter Property="Background" Value="#202C3A" /><Setter Property="BorderBrush" Value="#38495B" /><Setter Property="BorderThickness" Value="1" /></Style>
+    <Style Selector="ToggleButton.commit-amend:checked /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#233E3B" /><Setter Property="BorderBrush" Value="#79DDC4" /><Setter Property="TextElement.Foreground" Value="#79DDC4" /></Style>
+    <Style Selector="Button.nav"><Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="FontSize" Value="12" /><Setter Property="Padding" Value="10,7" /></Style>
     <Style Selector="Button.selected"><Setter Property="Background" Value="#233E3B" /><Setter Property="Foreground" Value="#79DDC4" /></Style>
     <Style Selector="Button.accent"><Setter Property="Foreground" Value="#79DDC4" /><Setter Property="BorderBrush" Value="#365B52" /><Setter Property="BorderThickness" Value="1" /></Style>
     <Style Selector="Expander">

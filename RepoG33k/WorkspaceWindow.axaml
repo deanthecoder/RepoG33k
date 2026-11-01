@@ -6,10 +6,10 @@
       <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
         <StackPanel Orientation="Horizontal" Spacing="5">
           <ComboBox Name="RepositoryPicker" Width="250" MaxDropDownHeight="360" PlaceholderText="Choose a repository" />
-          <Button Name="RepositoryRootButton" AutomationProperties.Name="Choose repo folder" ToolTip.Tip="Choose the parent folder containing your repositories"><StackPanel Orientation="Horizontal" Spacing="6"><icons:MaterialIcon Kind="FolderOpen" Width="18" Height="18" /><TextBlock Text="Repo folder…" VerticalAlignment="Center" /></StackPanel></Button>
+          <Button Name="RepositoryRootButton" Classes="workspace-entry" AutomationProperties.Name="Choose repo folder" ToolTip.Tip="Choose the parent folder containing your repositories"><StackPanel Orientation="Horizontal" Spacing="6"><icons:MaterialIcon Kind="FolderOpen" Width="18" Height="18" VerticalAlignment="Center" /><TextBlock Text="Repo folder…" VerticalAlignment="Center" /></StackPanel></Button>
+          <Button Name="PullRequestButton" Classes="workspace-entry" AutomationProperties.Name="Open PR" ToolTip.Tip="Review a Bitbucket pull request"><StackPanel Orientation="Horizontal" Spacing="6"><icons:MaterialIcon Kind="SourcePull" Width="18" Height="18" VerticalAlignment="Center" /><TextBlock Text="Open PR…" VerticalAlignment="Center" /></StackPanel></Button>
         </StackPanel>
         <SelectableTextBlock Name="RepositoryPathLabel" Background="Transparent" Grid.Row="1" Grid.ColumnSpan="3" Text="Choose a repo folder to find your repositories." Foreground="#8B9DAF" FontSize="11" Margin="2,6,0,0" TextTrimming="CharacterEllipsis" />
-        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0" Spacing="2"><TextBlock Name="BranchLabel" Text="No repository selected" Foreground="#D9E3EE" FontSize="12" TextTrimming="CharacterEllipsis" /><TextBlock Name="UpstreamLabel" Foreground="#8B9DAF" FontSize="11" TextTrimming="CharacterEllipsis" /></StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
           <Button Name="FetchButton" Content="↻  Fetch" /><Button Name="PullButton" Content="↓  Pull" ToolTip.Tip="Fast-forward only; use Rebase for diverged branches" /><Button Name="PushButton" Content="↑  Push" />
           <Button Name="AccountButton" Content="✦  Sign in with ChatGPT" BorderBrush="#2B3949" BorderThickness="1" Margin="9,0,0,0" />
@@ -23,7 +23,6 @@
             <Expander Name="WorkingSection" Header="WORKING COPY" IsExpanded="True"><StackPanel><Button Name="AllChangesButton" Classes="nav selected" Content="▧  All changes" /><Button Name="UnstagedButton" Classes="nav" Content="◌  Unstaged" /><Button Name="StagedButton" Classes="nav" Content="✓  Staged" /></StackPanel></Expander>
             <Expander Name="BranchSection" Header="LOCAL BRANCHES" IsExpanded="True"><StackPanel><StackPanel Name="LocalBranches" /><Button Name="NewBranchButton" Classes="nav" Content="＋  New branch…" /></StackPanel></Expander>
             <Expander Name="RemoteSection" Header="REMOTES" IsExpanded="True"><StackPanel Name="RemoteBranches" /></Expander>
-            <Button Name="PullRequestButton" Classes="nav" Content="⑂  Open Bitbucket PR…" Margin="0,3,0,8" />
             <Expander Name="HistorySection" Header="COMMITS" IsExpanded="False"><StackPanel Name="Commits" /></Expander>
           </StackPanel>
         </ScrollViewer>
@@ -39,8 +38,13 @@
           <Expander Name="CommitPanel" MinHeight="0" Padding="0" Header="Commit staged changes" IsExpanded="True">
           <StackPanel Name="CommitFields" Spacing="7" Margin="6,3,6,8">
             <Grid ColumnDefinitions="Auto,*,Auto"><Button Name="ConventionButton" Content="Home · Feature  ⌄" FontSize="11" Padding="7,4" Margin="0,0,8,0" BorderBrush="#2B3949" BorderThickness="1" /><TextBox Name="SummaryBox" Grid.Column="1" Watermark="Summary" MaxLines="1" AcceptsReturn="False" /><Button Name="DraftButton" Grid.Column="2" Classes="accent" Content="✦  Draft with Codex" FontSize="12" Padding="7,4" Margin="8,0,0,0" /></Grid>
-            <TextBox Name="DetailsBox" Watermark="Details (optional) — what changed and why" AcceptsReturn="True" TextWrapping="Wrap" Height="66" />
-            <Grid ColumnDefinitions="*,Auto,Auto"><CheckBox Name="AmendCheckBox" Grid.Column="1" Content="Amend last commit" FontSize="11" MinHeight="20" Margin="8,0,14,0" /><Button Name="CommitButton" Grid.Column="2" Classes="primary" Content="Commit" /></Grid>
+            <Grid ColumnDefinitions="*,142" Height="66">
+              <TextBox Name="DetailsBox" Watermark="Details (optional) — what changed and why" AcceptsReturn="True" TextWrapping="Wrap" />
+              <Grid Grid.Column="1" RowDefinitions="*,6,*" Margin="8,0,0,0">
+                <ToggleButton Name="AmendButton" Classes="commit-amend" Content="Amend last commit" FontSize="11" MinHeight="0" Padding="7,4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ToolTip.Tip="Toggle amend mode, then choose Commit to amend the last commit" />
+                <Button Name="CommitButton" Grid.Row="2" Classes="primary" Content="Commit" MinHeight="0" Padding="7,4" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+              </Grid>
+            </Grid>
           </StackPanel>
           </Expander>
         </Border>

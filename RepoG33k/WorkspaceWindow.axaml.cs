@@ -30,6 +30,7 @@ public partial class WorkspaceWindow : Window
     private readonly RepositoryService m_repository = new();
     private readonly WorkspacePreferences m_preferences = WorkspacePreferences.Load();
     private readonly CodexClient m_codex = new();
+    private readonly TemporaryReviewWorkspace m_temporaryReviews = new();
     private DiffLensView m_reviewedView;
     private string m_reviewedScopeId;
     private string m_reviewedLabel;
@@ -51,6 +52,7 @@ public partial class WorkspaceWindow : Window
     private bool m_settingPicker;
     private bool m_closeReady;
     private bool m_closing;
+    private bool m_workspaceFormOpen;
     private CancellationTokenSource m_cancellation;
     private readonly DispatcherTimer m_changeTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
@@ -178,9 +180,9 @@ public partial class WorkspaceWindow : Window
         ReviewButton.Click += async (_, _) => await ReviewAsync();
         PullRequestButton.Click += async (_, _) => await OpenPullRequestAsync();
         CancelButton.Click += (_, _) => { m_cancellation?.Cancel(); m_view?.CancelLoad(); };
-        AmendCheckBox.IsCheckedChanged += async (_, _) =>
+        AmendButton.IsCheckedChanged += async (_, _) =>
         {
-            if (AmendCheckBox.IsChecked == true && m_snapshot?.Head != null)
+            if (AmendButton.IsChecked == true && m_snapshot?.Head != null)
                 await PerformAsync("Reading last commit…", async () =>
                 {
                     var commit = m_snapshot.Head;
@@ -220,7 +222,7 @@ public partial class WorkspaceWindow : Window
         m_codex.AccountChanged += () => Dispatcher.UIThread.Post(RenderCodexAccount);
         AddHandler(KeyDownEvent, async (_, e) =>
         {
-            if (e.Key == Key.F5 && !m_busy)
+            if (e.Key == Key.F5 && !m_busy && !m_workspaceFormOpen)
             {
                 e.Handled = true;
                 await PerformAsync("Refreshing…", RefreshAsync, cancellable: true);
@@ -373,7 +375,7 @@ public partial class WorkspaceWindow : Window
         RefreshPicker();
         SummaryBox.Text = Preferences.Summary;
         DetailsBox.Text = Preferences.Details;
-        AmendCheckBox.IsChecked = false;
+        AmendButton.IsChecked = false;
         RenderMetadata();
         await m_view.ShowScopeAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
         await RefreshIndexAsync();
@@ -457,8 +459,6 @@ public partial class WorkspaceWindow : Window
                         if (!token.IsCancellationRequested)
                         {
                             item.Update(status);
-                            if (RepositoryUtilities.AreSameRepoPath(item.FullPath, m_snapshot?.Root))
-                                RenderBranchStatus(item.Status);
                         }
                     }
                     finally { m_statusReadSlots.Release(); }
@@ -472,14 +472,6 @@ public partial class WorkspaceWindow : Window
             }));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-    }
-
-    private void RenderBranchStatus(RepositoryBranchStatus status)
-    {
-        BranchLabel.Text = $"⑂  {status.Branch} · {status.Badge}";
-        UpstreamLabel.Text = status.Upstream ?? "No upstream configured";
-        ToolTip.SetTip(BranchLabel, status.Description);
-        ToolTip.SetTip(UpstreamLabel, status.Description);
     }
 
     private async Task ChooseRepositoryRootAsync()
@@ -530,7 +522,6 @@ public partial class WorkspaceWindow : Window
         var status = new RepositoryBranchStatus(m_snapshot.Branch, m_snapshot.Upstream, m_snapshot.Ahead, m_snapshot.Behind, m_snapshot.LastFetched, DateTimeOffset.UtcNow);
         if (m_repositoryItems.TryGetValue(m_snapshot.Root, out var item))
             item.Update(status);
-        RenderBranchStatus(status);
         RepositoryPathLabel.Text = m_snapshot.Root;
         ToolTip.SetTip(RepositoryPathLabel, $"{m_snapshot.Root}\nRight-click to open the folder or copy its path.");
         ToolTip.SetTip(RepositoryPicker, m_snapshot.Root);
@@ -690,14 +681,14 @@ public partial class WorkspaceWindow : Window
         string summary;
         try { summary = CommitConvention.Apply(SummaryBox.Text, Preferences, m_snapshot.Branch); }
         catch (InvalidOperationException ex) { await MessageAsync("Commit convention", ex.Message); return; }
-        var amend = AmendCheckBox.IsChecked == true;
+        var amend = AmendButton.IsChecked == true;
         if (amend && !await ConfirmAsync("Amend the last commit?", "This rewrites the last commit. If it has already been pushed, updating the remote will require a separate force-with-lease push.", "Amend commit"))
             return;
         await MutateAsync(amend ? "Amending commit…" : "Creating commit…", async () =>
         {
             await m_repository.CommitWorkingOrStagedAsync(m_snapshot.Root, summary, DetailsBox.Text, amend, m_index);
             SummaryBox.Text = DetailsBox.Text = string.Empty;
-            AmendCheckBox.IsChecked = false;
+            AmendButton.IsChecked = false;
             Preferences.JiraOverride = null;
             StoreDraft();
             SavePreferences();
@@ -900,15 +891,13 @@ public partial class WorkspaceWindow : Window
     private async Task OpenPullRequestAsync()
     {
         var url = new TextBox { Watermark = "https://bitbucket.example.com/projects/TEAM/repos/repo/pull-requests/123" };
-        var reposRoot = new TextBox { Text = string.IsNullOrWhiteSpace(m_preferences.RepositoryRoot) ? Settings.Instance.RepositoryRootPath : m_preferences.RepositoryRoot, Watermark = "Parent folder containing your local repositories" };
-        string Validate() => !BitbucketPrUrlParser.TryParse(url.Text, out _, out var error) ? error
-            : !Directory.Exists(reposRoot.Text) ? "Choose an existing folder containing your repositories." : null;
-        if (!await FormAsync("Open a Bitbucket pull request", [Label("Pull request URL"), url, Label("Local repositories root (used to find the matching clone)"), reposRoot, Label("An isolated review worktree will be prepared.")], "Review PR", validate: Validate))
+        string Validate() => !BitbucketPrUrlParser.TryParse(url.Text, out _, out var error) ? error : null;
+        if (!await FormAsync("Open a Bitbucket pull request", [Label("Pull request URL"), url, Label("The PR will open in a temporary workspace, deleted when RepoG33k closes.")], "Review PR", validate: Validate, withinWorkspace: true))
             return;
         await PerformAsync("Preparing pull request review…", async () =>
         {
             var dependencies = MainWindowCompositionRoot.CreateDependencies();
-            var result = await dependencies.ReviewWorkflowService.PrepareReviewByModeAsync(true, false, false, reposRoot.Text, url.Text, null, null, false,
+            var result = await dependencies.ReviewWorkflowService.PrepareReviewByModeAsync(true, false, false, m_temporaryReviews.GetRepositoryRoot(), url.Text, null, null, false,
                 text => Dispatcher.UIThread.Post(() => SetStatus(text)), null, m_cancellation.Token);
             if (!result.IsSuccess)
                 throw new InvalidOperationException(result.Error?.DialogMessage ?? "Could not prepare pull request review.");
@@ -921,6 +910,15 @@ public partial class WorkspaceWindow : Window
             window.Show(this);
             SetStatus("PR opened in its isolated DiffLens review window.");
         }, cancellable: true);
+    }
+
+    internal void CleanupTemporaryReviews()
+    {
+        try { m_temporaryReviews.Dispose(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Could not remove temporary PR workspace: {ex.Message}");
+        }
     }
 
     private async Task CopyConflictTaskAsync()
@@ -937,9 +935,17 @@ public partial class WorkspaceWindow : Window
 
     private async Task MessageAsync(string title, string message) => await FormAsync(title, [Label(message)], "OK", cancel: false);
 
-    private async Task<bool> FormAsync(string title, Control[] fields, string accept, bool cancel = true, Func<string> validate = null, string cancelText = "Cancel")
+    private async Task<bool> FormAsync(string title, Control[] fields, string accept, bool cancel = true, Func<string> validate = null, string cancelText = "Cancel", bool withinWorkspace = false)
     {
-        var dialog = new Window { Title = title, Width = cancel ? 510 : 440, SizeToContent = SizeToContent.Height, MaxHeight = 700, CanResize = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brush.Parse("#171F2A"), Foreground = Brush.Parse("#D9E3EE") };
+        var completion = new TaskCompletionSource<bool>();
+        var dialog = withinWorkspace ? null : new Window { Title = title, Width = cancel ? 510 : 440, SizeToContent = SizeToContent.Height, MaxHeight = 700, CanResize = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Brush.Parse("#171F2A"), Foreground = Brush.Parse("#D9E3EE") };
+        void Complete(bool result)
+        {
+            if (withinWorkspace)
+                completion.TrySetResult(result);
+            else
+                dialog.Close(result);
+        }
         var panel = new StackPanel { Margin = new Thickness(20), Spacing = 12, VerticalAlignment = VerticalAlignment.Top };
         if (cancel)
             panel.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
@@ -949,7 +955,7 @@ public partial class WorkspaceWindow : Window
         if (cancel)
         {
             var dismiss = new Button { Content = cancelText, IsCancel = true };
-            dismiss.Click += (_, _) => dialog.Close(false);
+            dismiss.Click += (_, _) => Complete(false);
             actions.Children.Add(dismiss);
         }
         var validation = Label(string.Empty);
@@ -976,11 +982,50 @@ public partial class WorkspaceWindow : Window
         {
             UpdateValidation();
             if (confirm.IsEnabled)
-                dialog.Close(true);
+                Complete(true);
         };
         actions.Children.Add(confirm);
         panel.Children.Add(actions);
-        dialog.Content = new ScrollViewer { Content = panel, VerticalAlignment = VerticalAlignment.Top, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        var content = new ScrollViewer { Content = panel, VerticalAlignment = VerticalAlignment.Top, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        if (withinWorkspace)
+        {
+            var root = (Grid)Content;
+            var previousFocus = FocusManager?.GetFocusedElement();
+            var controls = root.Children.Select(control => (Control: control, WasEnabled: control.IsEnabled)).ToArray();
+            var overlay = new Border
+            {
+                Background = Brush.Parse("#99000000"),
+                Child = new Border
+                {
+                    Width = 510, MaxWidth = Math.Max(0, Bounds.Width - 40), MaxHeight = Math.Max(0, Bounds.Height - 40),
+                    HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                    Background = Brush.Parse("#171F2A"), BorderBrush = Brush.Parse("#38495B"), BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8), Child = content
+                }
+            };
+            Grid.SetRowSpan(overlay, 3);
+            KeyboardNavigation.SetTabNavigation(overlay, KeyboardNavigationMode.Cycle);
+            overlay.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Escape && cancel) { Complete(false); e.Handled = true; }
+                else if (e.Key == Key.Enter && confirm.IsEnabled && e.Source is TextBox { AcceptsReturn: false }) { Complete(true); e.Handled = true; }
+            };
+            m_workspaceFormOpen = true;
+            foreach (var item in controls)
+                item.Control.IsEnabled = false;
+            root.Children.Add(overlay);
+            (fields.FirstOrDefault(field => field.Focusable) ?? confirm).Focus();
+            try { return await completion.Task; }
+            finally
+            {
+                root.Children.Remove(overlay);
+                m_workspaceFormOpen = false;
+                foreach (var item in controls)
+                    item.Control.IsEnabled = item.WasEnabled;
+                previousFocus?.Focus();
+            }
+        }
+        dialog.Content = content;
         return await dialog.ShowDialog<bool>(this);
     }
 }
