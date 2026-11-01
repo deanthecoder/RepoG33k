@@ -1,8 +1,11 @@
-# RepoG33k
-
+[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/deanthecoder.svg?style=social&label=Follow%20%40deanthecoder)](https://twitter.com/deanthecoder)
 [![GitHub Repo stars](https://img.shields.io/github/stars/deanthecoder/RepoG33k?style=social&label=Star)](https://github.com/deanthecoder/RepoG33k/stargazers)
 
-<p align="center"><img src="Assets/repog33k.png" width="160" alt="RepoG33k icon"></p>
+<p align="center">
+  <img src="img/repog33k.png" width="160" alt="RepoG33k Logo">
+</p>
+
+# RepoG33k
 
 A repository-focused Git client and code review app, built from the DiffLens experience in [ReviewG33k](https://github.com/deanthecoder/ReviewG33k). It includes a **DiffLens canvas and editor**, including pan/zoom, unified and side-by-side comparisons, autosave, undo/redo, and review finding markers.
 
