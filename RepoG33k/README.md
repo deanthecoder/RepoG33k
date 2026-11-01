@@ -8,7 +8,7 @@ A repository-focused Git client and code review app, built from the DiffLens exp
 
 ![RepoG33k repository workspace](../img/RepoG33kWorkspace.png)
 
-The screenshot shows RepoG33k running on the ReviewG33k repository.
+The screenshot shows RepoG33k running on its own repository, with the compact commit panel and updated toolbar.
 
 ## Run locally
 
