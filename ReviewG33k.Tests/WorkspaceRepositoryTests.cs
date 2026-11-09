@@ -31,9 +31,143 @@ public sealed class WorkspaceRepositoryTests
     }
 
     [TearDown]
-    public void TearDown() => Directory.Delete(m_root, recursive: true);
+    public void TearDown()
+    {
+        foreach (var file in Directory.EnumerateFiles(m_root, "*", SearchOption.AllDirectories))
+            File.SetAttributes(file, FileAttributes.Normal);
+        Directory.Delete(m_root, recursive: true);
+    }
 
     private Task<string> Git(params string[] args) => m_service.RunAsync(m_root, args);
+
+    [Test]
+    public async Task ChangeStampWorksOnUnbornBranches()
+    {
+        await Git("switch", "--orphan", "empty");
+        var initial = await m_service.ReadChangeStampAsync(m_root);
+        await File.WriteAllTextAsync(Path.Combine(m_root, "new.txt"), "new");
+        Assert.That(await m_service.ReadChangeStampAsync(m_root), Is.Not.EqualTo(initial));
+    }
+
+    [Test]
+    public async Task BackgroundFetchUpdatesRemoteKnowledge()
+    {
+        var remoteRoot = Path.Combine(m_root, "remote.git");
+        await Git("init", "--bare", remoteRoot);
+        await Git("remote", "add", "origin", remoteRoot);
+        await Git("push", "--set-upstream", "origin", "main");
+        var original = (await Git("rev-parse", "HEAD")).Trim();
+        await Git("commit", "--allow-empty", "-m", "Incoming");
+        await Git("push");
+        await Git("reset", "--hard", original);
+        await Git("update-ref", "refs/remotes/origin/main", original);
+        await m_service.FetchInBackgroundAsync(m_root, CancellationToken.None);
+        Assert.That((await m_service.ReadAsync(m_root)).Behind, Is.EqualTo(1));
+        Assert.That((await Git("rev-parse", "HEAD")).Trim(), Is.EqualTo(original));
+    }
+
+    [Test]
+    public async Task HistoryReadsAnotherBranchWithoutChangingCheckoutOrWorkingFiles()
+    {
+        await Git("branch", "feature");
+        await Git("commit", "--allow-empty", "-m", "Main update");
+        var mainTip = (await Git("rev-parse", "HEAD")).Trim();
+        await Git("switch", "feature");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "unfinished work");
+        var history = await m_service.ReadHistoryAsync(m_root, "refs/heads/main");
+        Assert.That(history[0].Commit, Is.EqualTo(mainTip));
+        Assert.That(history[0].Label, Is.EqualTo("Main update"));
+        Assert.That((await m_service.ReadAsync(m_root)).Branch, Is.EqualTo("feature"));
+        Assert.That(await File.ReadAllTextAsync(Path.Combine(m_root, "sample.txt")), Is.EqualTo("unfinished work"));
+    }
+
+    [Test]
+    public async Task DiscardPreservesPartialStagingAndRestoresDeletedFiles()
+    {
+        var path = Path.Combine(m_root, "sample.txt");
+        await File.WriteAllTextAsync(path, "staged content");
+        await Git("add", "sample.txt");
+        await File.WriteAllTextAsync(path, "unstaged content");
+        var file = (await m_service.ReadAsync(m_root)).Files.Single();
+        await m_service.DiscardAsync(m_root, file);
+        Assert.That(await File.ReadAllTextAsync(path), Is.EqualTo("staged content"));
+        Assert.That((await Git("show", ":sample.txt")), Is.EqualTo("staged content"));
+        File.Delete(path);
+        await m_service.DiscardAsync(m_root, (await m_service.ReadAsync(m_root)).Files.Single());
+        Assert.That(await File.ReadAllTextAsync(path), Is.EqualTo("staged content"));
+    }
+
+    [Test]
+    public async Task DiscardUntrackedUsesLiteralPathsAndRejectsChangedGitState()
+    {
+        await File.WriteAllTextAsync(Path.Combine(m_root, "[abc].txt"), "remove");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "a.txt"), "keep");
+        var file = (await m_service.ReadAsync(m_root)).Files.Single(f => f.Path == "[abc].txt");
+        await m_service.DiscardAsync(m_root, file);
+        Assert.That(File.Exists(Path.Combine(m_root, "[abc].txt")), Is.False);
+        Assert.That(File.Exists(Path.Combine(m_root, "a.txt")), Is.True);
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "edit");
+        file = (await m_service.ReadAsync(m_root)).Files.Single(f => f.Path == "sample.txt");
+        await Git("add", "sample.txt");
+        Assert.ThrowsAsync<InvalidOperationException>(() => m_service.DiscardAsync(m_root, file));
+    }
+
+    [Test]
+    public async Task ChangeStampDetectsExternalEditsStagingAndCommits()
+    {
+        var initial = await m_service.ReadChangeStampAsync(m_root);
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "edit");
+        var edited = await m_service.ReadChangeStampAsync(m_root);
+        Assert.That(edited, Is.Not.EqualTo(initial));
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "longer edit");
+        var editedAgain = await m_service.ReadChangeStampAsync(m_root);
+        Assert.That(editedAgain, Is.Not.EqualTo(edited));
+        await Git("add", "sample.txt");
+        var staged = await m_service.ReadChangeStampAsync(m_root);
+        Assert.That(staged, Is.Not.EqualTo(editedAgain));
+        await Git("commit", "-m", "External commit");
+        Assert.That(await m_service.ReadChangeStampAsync(m_root), Is.Not.EqualTo(staged));
+    }
+
+    [Test]
+    public async Task PullRebasesDivergedCommitsAndPreservesRecoveryTip()
+    {
+        await Git("branch", "upstream");
+        await Git("branch", "--set-upstream-to=upstream", "main");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "local.txt"), "local");
+        await Git("add", "local.txt");
+        await Git("commit", "-m", "Local commit");
+        var original = (await Git("rev-parse", "HEAD")).Trim();
+        await Git("switch", "upstream");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "remote.txt"), "remote");
+        await Git("add", "remote.txt");
+        await Git("commit", "-m", "Incoming commit");
+        await Git("switch", "main");
+        Assert.ThrowsAsync<InvalidOperationException>(() => m_service.PullFetchedAsync(m_root, false));
+        await m_service.PullFetchedAsync(m_root, true);
+        var state = await m_service.ReadAsync(m_root);
+        Assert.That(state.Behind, Is.Zero);
+        Assert.That(state.Ahead, Is.EqualTo(1));
+        Assert.That(File.Exists(Path.Combine(m_root, "local.txt")), Is.True);
+        Assert.That(File.Exists(Path.Combine(m_root, "remote.txt")), Is.True);
+        Assert.That(await Git("for-each-ref", "--format=%(objectname)", "refs/difflens/recovery"), Does.Contain(original));
+    }
+
+    [Test]
+    public async Task PullFastForwardsAndRebaseRefusesDirtyCheckout()
+    {
+        await Git("branch", "upstream");
+        await Git("branch", "--set-upstream-to=upstream", "main");
+        await Git("switch", "upstream");
+        await Git("commit", "--allow-empty", "-m", "Incoming");
+        var tip = (await Git("rev-parse", "HEAD")).Trim();
+        await Git("switch", "main");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "keep me");
+        Assert.ThrowsAsync<InvalidOperationException>(() => m_service.PullFetchedAsync(m_root, true));
+        await m_service.PullFetchedAsync(m_root, false);
+        Assert.That((await Git("rev-parse", "HEAD")).Trim(), Is.EqualTo(tip));
+        Assert.That(await File.ReadAllTextAsync(Path.Combine(m_root, "sample.txt")), Is.EqualTo("keep me"));
+    }
 
     [Test]
     public async Task BranchStatusDistinguishesLocalKnowledgeFromFetchingTheServer()
@@ -189,7 +323,7 @@ public sealed class WorkspaceRepositoryTests
     [Test]
     public async Task RenameWithSpacesAndNewlinesCanBeUnstagedWithoutChangingDisk()
     {
-        const string name = "renamed with spaces\nand a newline.txt";
+        var name = OperatingSystem.IsWindows() ? "renamed with spaces.txt" : "renamed with spaces\nand a newline.txt";
         await Git("mv", "--", "sample.txt", name);
         var entry = (await m_service.ReadAsync(m_root)).Files.Single();
         Assert.That(entry.Path, Is.EqualTo(name));

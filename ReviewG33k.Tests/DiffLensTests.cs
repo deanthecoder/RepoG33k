@@ -539,7 +539,7 @@ public sealed class DiffLensTests
         await File.WriteAllTextAsync(Path.Combine(m_root, "deleted-empty.cs"), string.Empty);
         await Git("add", ".");
         await Git("commit", "-m", "Baseline edge cases");
-        const string renamed = "renamed with spaces\nand a newline.cs";
+        var renamed = OperatingSystem.IsWindows() ? "renamed with spaces.cs" : "renamed with spaces\nand a newline.cs";
         await Git("mv", "--", "sample.cs", renamed);
         await File.WriteAllTextAsync(unicodePath, "new Unicode line\r\n", unicode);
         await Git("rm", "--", "deleted-empty.cs");

@@ -305,6 +305,7 @@ internal sealed class DiffLensView : UserControl
 
     public string Title { get; private set; }
     public bool IsLoading => m_loading;
+    public bool IsEditing => m_isEditing;
     public DiffLensScope CurrentScope => m_scope;
     public Func<string, bool> CanStageFile { get => m_canvas.CanStageFile; set => m_canvas.CanStageFile = value; }
     public Func<string, Task<bool>> StageFileAsync { get => m_canvas.StageFileAsync; set => m_canvas.StageFileAsync = value; }

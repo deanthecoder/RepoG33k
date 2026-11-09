@@ -37,9 +37,9 @@ public partial class WorkspaceWindow : Window
     private CodeSmellFinding[] m_reviewFindings = [];
     private Dictionary<string, string> m_reviewContents = new(StringComparer.Ordinal);
     private readonly string[] m_args;
-    private readonly HashSet<string> m_discoveredRepositories = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, RepositoryPickerItem> m_repositoryItems = new(StringComparer.Ordinal);
-    private readonly HashSet<string> m_statusReads = new(StringComparer.Ordinal);
+    private readonly HashSet<string> m_discoveredRepositories = new(RepositoryPathComparer.Instance);
+    private readonly Dictionary<string, RepositoryPickerItem> m_repositoryItems = new(RepositoryPathComparer.Instance);
+    private readonly HashSet<string> m_statusReads = new(RepositoryPathComparer.Instance);
     private readonly SemaphoreSlim m_statusReadSlots = new(2);
     private readonly CancellationTokenSource m_statusReadCancellation = new();
     private RepositorySnapshot m_snapshot;
@@ -55,6 +55,15 @@ public partial class WorkspaceWindow : Window
     private bool m_workspaceFormOpen;
     private Action m_dismissWorkspaceForm;
     private CancellationTokenSource m_cancellation;
+    private string m_historyRef = "HEAD";
+    private IReadOnlyList<DiffLensScope> m_history = [];
+    private string m_changeStamp;
+    private DateTimeOffset m_lastRemoteCheck = DateTimeOffset.MinValue;
+    private string m_remoteCheckError;
+    private string m_leaseHead;
+    private bool m_backgroundRefresh;
+    private bool m_polling;
+    private readonly DispatcherTimer m_pollTimer = new() { Interval = TimeSpan.FromSeconds(10) };
     private readonly DispatcherTimer m_changeTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
 
     public WorkspaceWindow() : this([])
@@ -144,11 +153,7 @@ public partial class WorkspaceWindow : Window
         }
         RefreshButton.Click += async (_, _) => await PerformAsync("Refreshing…", RefreshAsync, cancellable: true);
         FetchButton.Click += async (_, _) => await MutateAsync("Fetching remotes…", () => m_repository.RunAsync(m_snapshot.Root, "fetch", "--all", "--prune"));
-        PullButton.Click += async (_, _) =>
-        {
-            if (m_snapshot?.Upstream == null) { await MessageAsync("No upstream", "Choose an upstream by pushing this branch first."); return; }
-            await MutateAsync("Pulling updates…", () => m_repository.RunAsync(m_snapshot.Root, "pull", "--ff-only"));
-        };
+        PullButton.Click += async (_, _) => await PullAsync();
         PushButton.Click += async (_, _) => await PushAsync();
         var leasePush = new MenuItem { Header = "Push rewritten commits with lease…" };
         leasePush.Click += async (_, _) =>
@@ -158,7 +163,7 @@ public partial class WorkspaceWindow : Window
                 await MessageAsync("No upstream", "Publish this branch with Push before updating rewritten commits.");
                 return;
             }
-            var expected = m_snapshot.UpstreamHead;
+            var expected = m_leaseHead;
             if (await ConfirmAsync("Push rewritten commits?", $"Replace {m_snapshot.Upstream} with {m_snapshot.Branch}? Git will refuse if the remote has moved since the state displayed here. Use this after an amend or rebase of published commits.", "Push with lease"))
                 await MutateAsync("Pushing with an explicit lease…", () => m_repository.PushWithLeaseAsync(m_snapshot.Root, expected));
         };
@@ -177,7 +182,6 @@ public partial class WorkspaceWindow : Window
         SummaryBox.TextChanged += (_, _) => UpdateEnabledState();
         ConventionButton.Click += async (_, _) => await ConventionsAsync();
         DraftButton.Click += async (_, _) => await DraftAsync();
-        AccountButton.Click += async (_, _) => await ConnectAsync();
         ReviewButton.Click += async (_, _) => await ReviewAsync();
         PullRequestButton.Click += async (_, _) => await OpenPullRequestAsync();
         CancelButton.Click += (_, _) => { m_cancellation?.Cancel(); m_view?.CancelLoad(); };
@@ -225,6 +229,9 @@ public partial class WorkspaceWindow : Window
             if (!m_busy)
                 await PerformAsync("Updating working changes…", RefreshMetadataAsync, keepEditorActive: true);
         };
+        m_pollTimer.Tick += async (_, _) => await PollRepositoryAsync();
+        Activated += async (_, _) => await PollRepositoryAsync();
+        m_pollTimer.Start();
         m_codex.Progress += text => Dispatcher.UIThread.Post(() => SetStatus(text));
         m_codex.AccountChanged += () => Dispatcher.UIThread.Post(RenderCodexAccount);
         AddHandler(KeyDownEvent, async (_, e) =>
@@ -260,6 +267,7 @@ public partial class WorkspaceWindow : Window
             if (m_view != null && !await m_view.PrepareToCloseAsync()) { m_closing = false; return; }
             StoreDraft();
             SavePreferences();
+            m_pollTimer.Stop();
             m_codex.Dispose();
             m_changeTimer.Stop();
             m_statusReadCancellation.Cancel();
@@ -270,7 +278,11 @@ public partial class WorkspaceWindow : Window
 
     private Expander[] Sections => [WorkingSection, BranchSection, RemoteSection, HistorySection, CommitPanel];
     private RepositoryPreferences Preferences => m_preferences.For(m_snapshot.Root);
-    private void SetStatus(string message) { StatusLabel.Text = message; ToolTip.SetTip(StatusLabel, message); }
+    private void SetStatus(string message)
+    {
+        StatusLabel.Text = message?.ReplaceLineEndings(" · ").Trim();
+        ToolTip.SetTip(StatusLabel, message);
+    }
 
     private async Task PerformAsync(string message, Func<Task> action, bool cancellable = false, bool keepEditorActive = false)
     {
@@ -331,7 +343,7 @@ public partial class WorkspaceWindow : Window
         var ready = !m_busy && m_snapshot != null && m_view?.IsLoading != true;
         foreach (var control in new Control[] { FetchButton, PullButton, PushButton, NewBranchButton, RebaseButton, ReviewButton, CommitFields, WorkingSection, BranchSection, RemoteSection, HistorySection, RefreshButton })
             control.IsEnabled = ready;
-        RepositoryPicker.IsEnabled = RepositoryRootButton.IsEnabled = AccountButton.IsEnabled = PullRequestButton.IsEnabled = !m_busy;
+        RepositoryPicker.IsEnabled = RepositoryRootButton.IsEnabled = PullRequestButton.IsEnabled = !m_busy;
         DiffLensHost.IsEnabled = !m_busy || m_keepEditorActive || m_view?.IsLoading == true;
         CancelButton.IsVisible = m_view?.IsLoading == true || (m_busy && m_isCancellable);
         RebaseButton.IsEnabled = ready && !m_snapshot.Rebasing && !m_snapshot.Merging;
@@ -367,6 +379,11 @@ public partial class WorkspaceWindow : Window
         if (m_view != null && !await m_view.PrepareToCloseAsync())
             throw new InvalidOperationException("The current editor still has unsaved changes.");
         m_snapshot = state;
+        m_leaseHead = state.UpstreamHead;
+        m_historyRef = "HEAD";
+        m_changeStamp = null;
+        m_lastRemoteCheck = DateTimeOffset.MinValue;
+        m_remoteCheckError = null;
         Commits.Children.Clear();
         var candidates = new[] { "refs/remotes/origin/main", "refs/remotes/origin/master", "refs/heads/main", "refs/heads/master" };
         m_base = candidates.Select(c => state.Branches.FirstOrDefault(b => b.FullName == c)?.FullName).FirstOrDefault(c => c != null)
@@ -393,7 +410,7 @@ public partial class WorkspaceWindow : Window
         m_view.LoadingChanged += (_, _) => UpdateEnabledState();
         m_view.FileSaved += (_, _) => { m_changeTimer.Stop(); m_changeTimer.Start(); };
         DiffLensHost.Content = m_view;
-        m_preferences.Repositories.Remove(state.Root);
+        m_preferences.Repositories.RemoveAll(path => RepositoryPathComparer.Instance.Equals(path, state.Root));
         m_preferences.Repositories.Insert(0, state.Root);
         RefreshPicker();
         SummaryBox.Text = Preferences.Summary;
@@ -402,6 +419,7 @@ public partial class WorkspaceWindow : Window
         RenderMetadata();
         await m_view.ShowScopeAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
         await RefreshIndexAsync();
+        await RefreshHistoryAsync();
         SavePreferences();
         SetStatus($"Opened {state.Root}");
     }
@@ -415,7 +433,10 @@ public partial class WorkspaceWindow : Window
         var previous = m_snapshot.Branch;
         m_snapshot = await m_repository.ReadAsync(m_snapshot.Root);
         if (m_snapshot.Branch != previous)
+        {
             Preferences.JiraOverride = null;
+            m_historyRef = "HEAD";
+        }
         await RefreshIndexAsync();
         RenderMetadata();
     }
@@ -425,6 +446,8 @@ public partial class WorkspaceWindow : Window
         if (m_snapshot == null)
             return;
         await RefreshMetadataAsync();
+        if (!m_backgroundRefresh)
+            m_leaseHead = m_snapshot.UpstreamHead;
         if (m_snapshot.Files.Any(f => f.IsConflict))
             await m_view.ShowScopeAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
         else
@@ -434,13 +457,14 @@ public partial class WorkspaceWindow : Window
             SetStatus("Comparison loading cancelled. The previous view is retained.");
             return;
         }
+        await RefreshHistoryAsync();
         SetStatus("Repository ready.");
     }
 
     private void RefreshPicker()
     {
         m_settingPicker = true;
-        var options = m_preferences.Repositories.Concat(m_discoveredRepositories).Distinct(StringComparer.Ordinal)
+        var options = m_preferences.Repositories.Concat(m_discoveredRepositories).Distinct(RepositoryPathComparer.Instance)
             .Where(Directory.Exists).Select(p =>
             {
                 var option = LocalRepositoryOption.Create(p, m_preferences.RepositoryRoot);
@@ -546,6 +570,10 @@ public partial class WorkspaceWindow : Window
         if (m_repositoryItems.TryGetValue(m_snapshot.Root, out var item))
             item.Update(status);
         RepositoryPathLabel.Text = m_snapshot.Root;
+        BranchStatusLabel.IsVisible = true;
+        BranchStatusLabel.Text = status.Badge;
+        BranchStatusLabel.Foreground = Brush.Parse(m_snapshot.Behind > 0 ? "#E9BC70" : "#8B9DAF");
+        UpdateBranchStatusTooltip();
         ToolTip.SetTip(RepositoryPathLabel, $"{m_snapshot.Root}\nRight-click to open the folder or copy its path.");
         ToolTip.SetTip(RepositoryPicker, m_snapshot.Root);
         Title = $"RepoG33k — {Path.GetFileName(m_snapshot.Root)} · {m_snapshot.Branch}";
@@ -569,7 +597,15 @@ public partial class WorkspaceWindow : Window
                     label.FontWeight = FontWeight.SemiBold;
                 }
             }
-            button.Click += async (_, _) => await SelectScopeAsync(new DiffLensScope("ref:" + branch.FullName, branch.Name + " · compared with " + m_base, BranchTip: branch.FullName));
+            button.Click += async (_, _) => await BrowseBranchAsync(branch);
+            var history = new MenuItem { Header = "View commits" };
+            history.Click += async (_, _) => await BrowseBranchAsync(branch);
+            var copyName = new MenuItem { Header = "Copy branch name" };
+            copyName.Click += async (_, _) =>
+            {
+                if (Clipboard != null)
+                    await Clipboard.SetTextAsync(branch.Name);
+            };
             var compare = new MenuItem { Header = "Compare in DiffLens" };
             compare.Click += async (_, _) => await SelectScopeAsync(new DiffLensScope("ref:" + branch.FullName, branch.Name, BranchTip: branch.FullName));
             var review = new MenuItem { Header = "Review branch" };
@@ -589,7 +625,7 @@ public partial class WorkspaceWindow : Window
             delete.Click += async (_, _) => await DeleteBranchAsync(branch);
             if (!delete.IsEnabled)
                 ToolTip.SetTip(delete, "Switch to another branch before deleting this one.");
-            button.ContextMenu = new ContextMenu { ItemsSource = new[] { compare, review, checkout, delete } };
+            button.ContextMenu = new ContextMenu { ItemsSource = new[] { history, copyName, compare, review, checkout, delete } };
             (branch.Remote ? RemoteBranches : LocalBranches).Children.Add(button);
         }
     }
@@ -602,6 +638,12 @@ public partial class WorkspaceWindow : Window
                 : ids.Length == 1 ? $"Jira · {ids[0]} · from branch  ⌄" : "Jira · choose story ID  ⌄"
             : $"Home · {Preferences.Category}  ⌄";
         ToolTip.SetTip(ConventionButton, ids.Length == 1 ? $"Detected {ids[0]} in {m_snapshot.Branch}" : "Set the commit convention for this repository");
+    }
+
+    private void UpdateBranchStatusTooltip()
+    {
+        ToolTip.SetTip(BranchStatusLabel, $"Branch: {m_snapshot.Branch}\nUpstream: {m_snapshot.Upstream ?? "not configured"}\n" +
+            (m_remoteCheckError ?? "Compared with locally known refs. Remote checked every two minutes; Fetch to check now."));
     }
 
     private async Task SelectScopeAsync(DiffLensScope scope) => await PerformAsync("Loading comparison…", async () =>
@@ -629,8 +671,14 @@ public partial class WorkspaceWindow : Window
         StagedButton.Classes.Set("selected", scope?.Id == "staged");
         UnstagedButton.Classes.Set("selected", scope?.Id == "unstaged");
         ReviewButton.Content = "Run review";
+        RenderHistory();
+    }
+
+    private void RenderHistory()
+    {
+        HistorySection.Header = "COMMITS · " + (m_historyRef == "HEAD" ? m_snapshot.Branch : m_historyRef.Replace("refs/heads/", "").Replace("refs/remotes/", ""));
         Commits.Children.Clear();
-        foreach (var commit in m_view.Scopes.Where(s => s.Commit != null).Take(100))
+        foreach (var commit in m_history)
         {
             var button = NavButton(commit.Label);
             ToolTip.SetTip(button, $"{commit.Date} · {commit.Commit}\n{commit.Label}");
@@ -669,7 +717,88 @@ public partial class WorkspaceWindow : Window
             unstage.Click += async (_, _) => await MutateAsync("Unstaging file…", () => m_repository.UnstageAsync(m_snapshot.Root, file));
             actions.Add(unstage);
         }
+        if (file.IsUnstaged && !file.IsConflict)
+        {
+            var discard = new MenuItem { Header = file.Index == '?' ? "Delete untracked file…" : "Discard working changes…", IsEnabled = ready };
+            discard.Click += async (_, _) =>
+            {
+                if (await ConfirmAsync("Discard changes?", file.Index == '?'
+                    ? $"Permanently delete {file.Path}? This file is not tracked by Git."
+                    : $"Restore {file.Path} to its staged version? Unstaged edits will be lost; staged changes are kept.", "Discard"))
+                    await MutateAsync("Discarding changes…", () => m_repository.DiscardAsync(m_snapshot.Root, file));
+            };
+            actions.Add(discard);
+        }
         return actions;
+    }
+
+    private async Task RefreshHistoryAsync()
+    {
+        if (m_snapshot.Head == null) { m_history = []; RenderHistory(); return; }
+        if (m_historyRef != "HEAD" && !m_snapshot.Branches.Any(b => b.FullName == m_historyRef))
+            m_historyRef = "HEAD";
+        m_history = await m_repository.ReadHistoryAsync(m_snapshot.Root, m_historyRef);
+        RenderHistory();
+    }
+
+    private async Task BrowseBranchAsync(RepositoryRef branch) => await PerformAsync("Loading branch history…", async () =>
+    {
+        m_historyRef = branch.FullName;
+        await RefreshHistoryAsync();
+        HistorySection.IsExpanded = true;
+        if (m_history.Count > 0)
+            await m_view.ShowScopeAsync(m_history[0], m_cancellation?.Token ?? default);
+    }, cancellable: true);
+
+    private async Task PullAsync()
+    {
+        if (m_snapshot?.Upstream == null) { await MessageAsync("No upstream", "Choose an upstream by pushing this branch first."); return; }
+        await MutateAsync("Fetching and pulling updates…", async () =>
+        {
+            await m_repository.RunAsync(m_snapshot.Root, "fetch", "--all");
+            var state = await m_repository.ReadAsync(m_snapshot.Root);
+            var diverged = state.Ahead > 0 && state.Behind > 0;
+            if (diverged && !await ConfirmAsync("Rebase local commits?", $"Your branch has {state.Ahead} outgoing and {state.Behind} incoming commits. Replay your local commits on {state.Upstream}? Commit or stash working changes first. A recovery reference preserves the original branch tip.", "Pull with rebase"))
+                return;
+            await m_repository.PullFetchedAsync(m_snapshot.Root, diverged);
+        });
+    }
+
+    private async Task PollRepositoryAsync()
+    {
+        if (m_polling || m_busy || m_closing || m_workspaceFormOpen || m_snapshot == null || m_view?.IsLoading == true || m_view?.IsEditing == true)
+            return;
+        m_polling = true;
+        var root = m_snapshot.Root;
+        try
+        {
+            if (DateTimeOffset.UtcNow - m_lastRemoteCheck >= TimeSpan.FromMinutes(2))
+            {
+                m_lastRemoteCheck = DateTimeOffset.UtcNow;
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(m_statusReadCancellation.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                try { await m_repository.FetchInBackgroundAsync(root, timeout.Token); m_remoteCheckError = null; }
+                catch (Exception ex) { m_remoteCheckError = "Automatic fetch failed; status uses last known remote refs. " + ex.Message; }
+            }
+            var stamp = await m_repository.ReadChangeStampAsync(root);
+            // The user can keep working while the read-only probe and fetch are running.
+            if (m_busy || m_closing || m_workspaceFormOpen || m_snapshot.Root != root || m_view.IsLoading || m_view.IsEditing || FocusManager?.GetFocusedElement() is TextBox)
+                return;
+            UpdateBranchStatusTooltip();
+            if (stamp == m_changeStamp)
+                return;
+            m_busy = m_backgroundRefresh = true;
+            UpdateEnabledState();
+            try
+            {
+                await RefreshAsync();
+                if (m_view.LastLoadSucceeded)
+                    m_changeStamp = stamp;
+            }
+            finally { m_busy = m_backgroundRefresh = false; UpdateEnabledState(); }
+        }
+        catch (Exception ex) { if (!m_busy && !m_closing) SetStatus("Automatic refresh failed: " + ex.Message); }
+        finally { m_polling = false; }
     }
 
     private static Button NavButton(string text)
@@ -694,7 +823,21 @@ public partial class WorkspaceWindow : Window
             await MutateAsync("Publishing branch…", () => m_repository.RunAsync(m_snapshot.Root, "push", "--set-upstream", remote, m_snapshot.Branch));
         }
         else
-            await MutateAsync("Pushing commits…", () => m_repository.RunAsync(m_snapshot.Root, "push"));
+            await MutateAsync("Pushing commits…", async () =>
+            {
+                try { await m_repository.RunAsync(m_snapshot.Root, "push"); }
+                catch (InvalidOperationException ex)
+                {
+                    // A rejected push may be the first indication that the server has moved.
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                    try { await m_repository.FetchInBackgroundAsync(m_snapshot.Root, timeout.Token); }
+                    catch (Exception) { throw new InvalidOperationException(ex.Message + "\nFetch to check the remote state before retrying.", ex); }
+                    var state = await m_repository.ReadAsync(m_snapshot.Root);
+                    throw new InvalidOperationException(ex.Message + (state.Behind > 0
+                        ? $"\nYour branch is behind by {state.Behind} commit(s). Use Pull to integrate them; diverged commits can be rebased."
+                        : "\nRemote status has been refreshed."), ex);
+                }
+            });
     }
 
     private async Task CommitAsync()
@@ -825,7 +968,7 @@ public partial class WorkspaceWindow : Window
         }
     }
 
-    private async Task ConnectAsync() => await PerformAsync("Connecting to Codex…", async () =>
+    private async Task EnsureCodexSignInAsync()
     {
         if (!await m_codex.ReadAccountAsync(m_cancellation.Token))
         {
@@ -833,14 +976,14 @@ public partial class WorkspaceWindow : Window
             await m_codex.SignInAsync(uri => Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }), m_cancellation.Token);
         }
         RenderCodexAccount();
-        SetStatus("ChatGPT connected. Drafting uses your Codex account's available usage.");
-    }, cancellable: true);
+        SetStatus("Preparing changes for Codex…");
+    }
 
     private void RenderCodexAccount()
     {
-        AccountLabel.Text = m_codex.AccountLabel == null ? "Sign in with ChatGPT" : "ChatGPT connected";
-        Avalonia.Automation.AutomationProperties.SetName(AccountButton, AccountLabel.Text);
-        ToolTip.SetTip(AccountButton, m_codex.AccountLabel ?? "Connect your ChatGPT account for Codex commit drafts.");
+        ToolTip.SetTip(DraftButton, m_codex.AccountLabel == null
+            ? "Draft a commit message with Codex. Opens ChatGPT sign-in if needed."
+            : $"Draft a commit message with Codex using {m_codex.AccountLabel}.");
     }
 
     private async Task DraftAsync()
@@ -849,6 +992,9 @@ public partial class WorkspaceWindow : Window
             return;
         await PerformAsync("Preparing changes for Codex…", async () =>
         {
+            if (!(await m_repository.ReadAsync(m_snapshot.Root)).Files.Any(file => file.IsStaged || file.IsUnstaged))
+                throw new InvalidOperationException("There are no changes to draft a commit for.");
+            await EnsureCodexSignInAsync();
             var tree = await m_repository.IndexTreeAsync(m_snapshot.Root);
             var stagedFiles = await m_repository.RunAsync(m_snapshot.Root, "diff", "--cached", "--name-only", "--no-ext-diff", "--no-textconv", "--");
             var staged = !string.IsNullOrWhiteSpace(stagedFiles);

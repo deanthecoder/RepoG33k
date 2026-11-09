@@ -29,6 +29,66 @@ internal sealed class RepositoryService
 {
     private readonly GitCommandRunner m_git = new();
 
+    public async Task<IReadOnlyList<ReviewG33k.Services.DiffLens.DiffLensScope>> ReadHistoryAsync(string root, string reference)
+    {
+        var tip = (await RunAsync(root, "rev-parse", "--verify", reference + "^{commit}")).Trim();
+        var log = await RunAsync(root, "log", "--first-parent", "--max-count=100", "--format=%H%x09%h%x09%as%x09%s", tip, "--");
+        return log.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.TrimEnd('\r').Split('\t', 4))
+            .Where(f => f.Length == 4).Select(f => new ReviewG33k.Services.DiffLens.DiffLensScope(f[0], f[3], f[0], f[2], f[1])).ToArray();
+    }
+
+    public async Task FetchInBackgroundAsync(string root, CancellationToken token)
+    {
+        var result = await m_git.RunNonInteractiveAsync(root, token, "-c", "credential.interactive=false", "-c", "core.askPass=", "fetch", "--all", "--quiet");
+        if (!result.IsSuccess)
+            throw new InvalidOperationException(result.GetCombinedOutput());
+    }
+
+    public async Task DiscardAsync(string root, RepositoryFile file)
+    {
+        var current = (await ReadAsync(root)).Files.FirstOrDefault(f => f.Path == file.Path);
+        if (current != file)
+            throw new InvalidOperationException("This file's Git state changed. Refresh and review it before discarding.");
+        if (file.IsConflict || !file.IsUnstaged)
+            throw new InvalidOperationException("Only non-conflicting working changes can be discarded. Unstage staged changes first.");
+        if (file.Index == '?')
+        {
+            // Literal pathspecs prevent wildcard filenames from affecting other files.
+            await RunAsync(root, "--literal-pathspecs", "clean", "-f", "--", file.Path);
+        }
+        else
+            await RunAsync(root, "--literal-pathspecs", "restore", "--worktree", "--", file.Path);
+    }
+
+    public async Task PullFetchedAsync(string root, bool rebase)
+    {
+        var state = await ReadAsync(root);
+        if (state.UpstreamHead == null || state.Rebasing || state.Merging || state.Files.Any(f => f.IsConflict))
+            throw new InvalidOperationException("Pull requires an upstream and no Git operation in progress.");
+        if (state.Behind == 0)
+            return;
+        if (rebase)
+            await RebaseAsync(root, state.UpstreamHead);
+        else
+            await RunAsync(root, "merge", "--ff-only", state.UpstreamHead);
+    }
+
+    public async Task<string> ReadChangeStampAsync(string root)
+    {
+        var status = await RunAsync(root, "status", "--porcelain=v1", "-z", "--untracked-files=all");
+        var refs = await RunAsync(root, "for-each-ref", "--format=%(refname) %(objectname)");
+        var branch = await m_git.RunAsync(root, "symbolic-ref", "--quiet", "HEAD");
+        var head = await m_git.RunAsync(root, "rev-parse", "--verify", "HEAD");
+        var diff = await RunAsync(root, "diff", "--raw", "--no-abbrev", "--");
+        var index = await RunAsync(root, "ls-files", "--stage", "-z");
+        var stamps = ParseStatus(status).Select(f =>
+        {
+            var info = new FileInfo(Path.Combine(root, f.Path));
+            return info.Exists ? $"{f.Path}\0{info.Length}\0{info.LastWriteTimeUtc.Ticks}" : f.Path;
+        });
+        return status + refs + branch.StandardOutput + head.StandardOutput + diff + index + string.Join('\0', stamps);
+    }
+
     public async Task<string> RunAsync(string root, params string[] args)
     {
         var result = await m_git.RunAsync(root, args);

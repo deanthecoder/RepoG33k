@@ -27,6 +27,12 @@ public sealed class GitCommandRunner
         => await RunBytesAsync(workingDirectory, CancellationToken.None, arguments);
 
     public async Task<GitCommandResult> RunAsync(string workingDirectory, CancellationToken cancellationToken, params string[] arguments)
+        => await RunCoreAsync(workingDirectory, cancellationToken, false, arguments);
+
+    public Task<GitCommandResult> RunNonInteractiveAsync(string workingDirectory, CancellationToken cancellationToken, params string[] arguments)
+        => RunCoreAsync(workingDirectory, cancellationToken, true, arguments);
+
+    private async Task<GitCommandResult> RunCoreAsync(string workingDirectory, CancellationToken cancellationToken, bool nonInteractive, string[] arguments)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -40,6 +46,12 @@ public sealed class GitCommandRunner
             UseShellExecute = false
         };
 
+        if (nonInteractive)
+        {
+            startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+            startInfo.Environment["GCM_INTERACTIVE"] = "Never";
+            startInfo.Environment["GIT_SSH_COMMAND"] = "ssh -oBatchMode=yes";
+        }
         foreach (var argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
