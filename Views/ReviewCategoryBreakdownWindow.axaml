@@ -6,6 +6,7 @@
         xmlns:viewModels="clr-namespace:ReviewG33k.ViewModels"
         mc:Ignorable="d"
         x:Class="ReviewG33k.Views.ReviewCategoryBreakdownWindow"
+        x:DataType="viewModels:ReviewResultsWindowViewModel"
         Width="860"
         Height="560"
         MinWidth="760"

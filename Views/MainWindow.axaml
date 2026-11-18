@@ -4,10 +4,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:dialogHostAvalonia="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:models="clr-namespace:ReviewG33k.Models"
+        xmlns:services="clr-namespace:ReviewG33k.Services"
         xmlns:viewModels="clr-namespace:ReviewG33k.ViewModels"
         mc:Ignorable="d"
         x:Name="MainWindowRoot"
         x:Class="ReviewG33k.Views.MainWindow"
+        x:DataType="viewModels:MainWindowViewModel"
         Width="980" Height="700"
         MinWidth="965" MinHeight="520"
         Icon="/Assets/app.ico"
@@ -236,7 +239,7 @@
                                           DropDownOpened="LocalRepositoryComboBox_OnDropDownOpened"
                                           ToolTip.Tip="{Binding LocalRepositoryPath}">
                                     <ComboBox.ItemTemplate>
-                                        <DataTemplate>
+                                        <DataTemplate x:DataType="models:LocalRepositoryOption">
                                             <StackPanel Orientation="Horizontal" ToolTip.Tip="{Binding FullPath}">
                                                 <TextBlock Text="{Binding AncestorLabel}" Foreground="{DynamicResource BrushText1}" />
                                                 <TextBlock Text="{Binding RepositoryName}" Foreground="#E9BC70" FontWeight="SemiBold" />
@@ -352,7 +355,7 @@
                                 </Style>
                             </ListBox.Styles>
                             <ListBox.ItemTemplate>
-                                <DataTemplate>
+                                <DataTemplate x:DataType="services:LogLineEntry">
                                     <TextBlock Text="{Binding Text}"
                                                Foreground="{Binding Foreground}"
                                                TextWrapping="NoWrap"
