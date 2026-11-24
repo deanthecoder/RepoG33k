@@ -41,6 +41,84 @@ public sealed class WorkspaceRepositoryTests
     private Task<string> Git(params string[] args) => m_service.RunAsync(m_root, args);
 
     [Test]
+    public async Task EmptyCommitsDoNotInvalidateUnchangedWorkingComparison()
+    {
+        var scope = new DiffLensScope("local", "All changes");
+        var stamp = await m_service.ReadComparisonStampAsync(m_root, scope, "main");
+        await Git("commit", "--allow-empty", "-m", "No content change");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.EqualTo(stamp));
+    }
+
+    [Test]
+    public async Task BranchComparisonTracksItsOwnTipButIgnoresOtherRefs()
+    {
+        await Git("branch", "selected");
+        var scope = new DiffLensScope("ref:selected", "Selected", BranchTip: "refs/heads/selected");
+        var stamp = await m_service.ReadComparisonStampAsync(m_root, scope, "main");
+        await Git("branch", "unrelated");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.EqualTo(stamp));
+        await Git("commit", "--allow-empty", "-m", "Next");
+        await Git("branch", "--force", "selected", "HEAD");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.Not.EqualTo(stamp));
+    }
+
+    [Test]
+    public async Task WorkingComparisonIgnoresStagingUnrelatedRefsAndTimestampOnlyChanges()
+    {
+        var scope = new DiffLensScope("local", "All changes");
+        var path = Path.Combine(m_root, "sample.txt");
+        await File.WriteAllTextAsync(path, "reviewed changes\n");
+        var stamp = await m_service.ReadComparisonStampAsync(m_root, scope, "main");
+        await Git("add", "sample.txt");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.EqualTo(stamp));
+        await Git("branch", "unrelated");
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.EqualTo(stamp));
+        await File.WriteAllTextAsync(path, "different changes\n");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.Not.EqualTo(stamp));
+    }
+
+    [Test]
+    public async Task StagingInvalidatesUnstagedAndStagedComparisonsButUnstagedEditsLeaveStagedViewAlone()
+    {
+        var staged = new DiffLensScope("staged", "Staged");
+        var unstaged = new DiffLensScope("unstaged", "Unstaged");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "changes\n");
+        var beforeStaged = await m_service.ReadComparisonStampAsync(m_root, staged, "main");
+        var beforeUnstaged = await m_service.ReadComparisonStampAsync(m_root, unstaged, "main");
+        await Git("add", "sample.txt");
+        var afterStaged = await m_service.ReadComparisonStampAsync(m_root, staged, "main");
+        Assert.That(afterStaged, Is.Not.EqualTo(beforeStaged));
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, unstaged, "main"), Is.Not.EqualTo(beforeUnstaged));
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "later changes\n");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, staged, "main"), Is.EqualTo(afterStaged));
+    }
+
+    [Test]
+    public async Task CommitComparisonIgnoresWorkingChangesAndOtherBranches()
+    {
+        var commit = (await Git("rev-parse", "HEAD")).Trim();
+        var scope = new DiffLensScope(commit, "Commit", Commit: commit);
+        var stamp = await m_service.ReadComparisonStampAsync(m_root, scope, "main");
+        await Git("commit", "--allow-empty", "-m", "Other commit");
+        await File.WriteAllTextAsync(Path.Combine(m_root, "sample.txt"), "working changes");
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.EqualTo(stamp));
+    }
+
+    [Test]
+    public async Task UntrackedContentChangesInvalidateComparisonEvenWithSameSizeAndTimestamp()
+    {
+        var scope = new DiffLensScope("local", "All changes");
+        var path = Path.Combine(m_root, "new.txt");
+        await File.WriteAllTextAsync(path, "abc");
+        var time = File.GetLastWriteTimeUtc(path);
+        var stamp = await m_service.ReadComparisonStampAsync(m_root, scope, "main");
+        await File.WriteAllTextAsync(path, "xyz");
+        File.SetLastWriteTimeUtc(path, time);
+        Assert.That(await m_service.ReadComparisonStampAsync(m_root, scope, "main"), Is.Not.EqualTo(stamp));
+    }
+
+    [Test]
     public async Task ChangeStampWorksOnUnbornBranches()
     {
         await Git("switch", "--orphan", "empty");

@@ -731,7 +731,7 @@ internal sealed class DiffLensView : UserControl
             foreach (var cell in cells)
                 cell.Findings = ActiveFindingsFor(changeSet.Root, cell.Entry.Path);
             m_canvas.RepositoryRootPath = changeSet.Root;
-            m_canvas.SetFiles(Path.GetFileName(changeSet.Root), cells, preserveReview: sameScope);
+            m_canvas.SetFiles(Path.GetFileName(changeSet.Root), cells, preserveReview: sameScope, preserveViewport: sameScope);
             Entries = changeSet.Entries;
             Scopes = result.Catalog.Scopes;
             m_filePanel.UpdateFiles(changeSet.Root, m_scope, Entries, m_canvas.SelectedPath);

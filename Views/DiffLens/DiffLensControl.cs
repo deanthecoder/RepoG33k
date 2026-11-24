@@ -64,6 +64,9 @@ internal sealed class DiffLensControl : Control
     private readonly IImmutableBrush m_added = Brush.Parse("#173C31").ToImmutable();
     private readonly IImmutableBrush m_removed = Brush.Parse("#44282E").ToImmutable();
     private IReadOnlyList<DiffLensCell> m_cells = [];
+    private IReadOnlyList<DiffLensCell> m_sourceCells = [];
+    private readonly Dictionary<string, (string Baseline, string Working)> m_stagedCards = new(StringComparer.Ordinal);
+    internal IReadOnlyList<DiffLensCell> VisibleCells => m_cells;
     private DiffLensFolder m_root;
     private int? m_previousDetail;
     private DiffLensCell m_fadingCell;
@@ -177,11 +180,22 @@ internal sealed class DiffLensControl : Control
 
     private int FindingLine(CodeSmellFinding finding) => FindingLineResolver?.Invoke(finding) ?? finding.LineNumber;
 
-    public void SetFiles(string rootName, IReadOnlyList<DiffLensCell> cells, bool preserveReview = true)
+    public void SetFiles(string rootName, IReadOnlyList<DiffLensCell> cells, bool preserveReview = true, bool preserveViewport = false)
     {
         m_textCache = new(8192);
         m_codeCache = new(8192);
         m_titleCache = new(1024);
+        var hadLayout = m_root != null;
+        m_sourceCells = cells;
+        if (!preserveReview)
+            m_stagedCards.Clear();
+        foreach (var path in m_stagedCards.Keys.ToArray())
+        {
+            var entry = cells.FirstOrDefault(c => c.Entry.Path == path)?.Entry;
+            if (entry?.File == null || m_stagedCards[path] != (entry.File.Baseline, entry.File.WorkingText))
+                m_stagedCards.Remove(path);
+        }
+        cells = cells.Where(c => !m_stagedCards.ContainsKey(c.Entry.Path)).ToArray();
         var previousCells = m_cells.ToDictionary(cell => cell.Entry.Path);
         var selectedPath = preserveReview ? SelectedPath : null;
         foreach (var cell in cells)
@@ -192,7 +206,14 @@ internal sealed class DiffLensControl : Control
         m_root = DiffLensLayout.Build(rootName, cells);
         SelectedPath = cells.FirstOrDefault(cell => cell.Entry.Path == selectedPath)?.Entry.Path
             ?? cells.FirstOrDefault(cell => cell.Entry.File != null)?.Entry.Path;
-        Fit(false);
+        if (preserveViewport && hadLayout)
+        {
+            m_fitTimer.Stop();
+            m_resizeTimer.Stop();
+            InvalidateVisual();
+        }
+        else
+            Fit(false);
     }
 
     public void SetFile(string path, string baseline, string working, bool resetCamera = true)
@@ -227,6 +248,8 @@ internal sealed class DiffLensControl : Control
 
     public bool FocusFile(string path)
     {
+        if (m_stagedCards.Remove(path))
+            SetFiles(m_root.Name, m_sourceCells, preserveViewport: true);
         var cell = m_cells.FirstOrDefault(item => item.Entry.Path == path);
         if (cell == null)
             return false;
@@ -336,17 +359,22 @@ internal sealed class DiffLensControl : Control
         if (!cell.IsReviewed && StageFileAsync != null && CanStageFile?.Invoke(path) == true)
         {
             m_fileActionBusy = true;
+            m_stagedCards[path] = (cell.Entry.File.Baseline, cell.Entry.File.WorkingText);
+            SetFiles(m_root.Name, m_sourceCells, preserveViewport: true);
+            var staged = false;
             try
             {
-                if (await StageFileAsync(path))
-                {
-                    // Staging refreshes the comparison. Collapse its new card, if it remains visible.
-                    var refreshed = m_cells.FirstOrDefault(c => c.Entry.Path == path);
-                    if (refreshed is { IsReviewed: false })
-                        ToggleReviewed(refreshed);
-                }
+                staged = await StageFileAsync(path);
             }
-            finally { m_fileActionBusy = false; }
+            finally
+            {
+                if (!staged)
+                {
+                    m_stagedCards.Remove(path);
+                    SetFiles(m_root.Name, m_sourceCells, preserveViewport: true);
+                }
+                m_fileActionBusy = false;
+            }
             return;
         }
         ToggleReviewed(cell);
@@ -844,7 +872,7 @@ internal sealed class DiffLensControl : Control
             var hoverPoint = e.GetPosition(this);
             var cell = HitCell((hoverPoint - m_offset) / m_zoom);
             var hint = cell == null ? null : cell.Entry.File != null && ReviewButton(cell).Contains(hoverPoint)
-                ? (cell.IsReviewed ? "Mark unreviewed and expand" : StageFileAsync != null && CanStageFile?.Invoke(cell.Entry.Path) == true ? "Stage file and collapse (all working changes)" : "Mark reviewed and collapse") : ModeButton(cell, false).Contains(hoverPoint) ? "Unified diff (U)" :
+                ? (cell.IsReviewed ? "Mark unreviewed and expand" : StageFileAsync != null && CanStageFile?.Invoke(cell.Entry.Path) == true ? "Stage file and hide (all working changes)" : "Mark reviewed and collapse") : ModeButton(cell, false).Contains(hoverPoint) ? "Unified diff (U)" :
                 ModeButton(cell, true).Contains(hoverPoint) ? "Side-by-side diff (S)" : null;
             if (hint == null)
             {

@@ -89,6 +89,49 @@ internal sealed class RepositoryService
         return status + refs + branch.StandardOutput + head.StandardOutput + diff + index + string.Join('\0', stamps);
     }
 
+    /// <summary>Tracks only the content used by the selected comparison, independently of other refs and file timestamps.</summary>
+    public async Task<string> ReadComparisonStampAsync(string root, ReviewG33k.Services.DiffLens.DiffLensScope scope, string target)
+    {
+        if (scope.Commit != null)
+            return scope.Id + ":" + (await RunAsync(root, "rev-parse", "--verify", scope.Commit + "^{commit}")).Trim();
+        if (scope.BranchTip != null)
+        {
+            var tip = (await RunAsync(root, "rev-parse", "--verify", scope.BranchTip + "^{commit}")).Trim();
+            return scope.Id + ":" + tip + ":" + (await RunAsync(root, "merge-base", target, tip)).Trim();
+        }
+        var head = await m_git.RunAsync(root, "rev-parse", "--verify", "HEAD");
+        var baseline = scope.Id == "unstaged" ? string.Empty : head.StandardOutput.Trim();
+        if (scope.Id == "branch" && head.IsSuccess)
+            baseline = (await RunAsync(root, "merge-base", target, "HEAD")).Trim();
+        var args = new List<string> { "diff", "--binary", "--no-ext-diff", "--no-textconv", "--no-color" };
+        if (scope.Id == "staged") args.Add("--cached");
+        if (baseline.Length > 0) args.Add(baseline);
+        args.Add("--");
+        // Binary diff output includes full blob IDs, so unrelated commits do not invalidate this view.
+        var content = scope.Id + "\0" + await RunAsync(root, args.ToArray());
+        if (!head.IsSuccess && scope.Id != "staged" && scope.Id != "unstaged")
+            content += await RunAsync(root, "diff", "--cached", "--binary", "--no-ext-diff", "--no-textconv", "--no-color", "--");
+        if (scope.Id != "staged")
+        {
+            var untracked = await RunAsync(root, "ls-files", "--others", "--exclude-standard", "-z");
+            foreach (var path in untracked.Split('\0', StringSplitOptions.RemoveEmptyEntries).OrderBy(p => p, StringComparer.Ordinal))
+            {
+                content += "\0" + path + "\0";
+                try
+                {
+                    await using var stream = File.OpenRead(Path.Combine(root, path));
+                    content += Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(stream));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The comparison loader renders unavailable paths as error cards.
+                    content += ex.GetType().Name + ":" + ex.Message;
+                }
+            }
+        }
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
+    }
+
     public async Task<string> RunAsync(string root, params string[] args)
     {
         var result = await m_git.RunAsync(root, args);

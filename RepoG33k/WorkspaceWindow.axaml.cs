@@ -58,6 +58,7 @@ public partial class WorkspaceWindow : Window
     private string m_historyRef = "HEAD";
     private IReadOnlyList<DiffLensScope> m_history = [];
     private string m_changeStamp;
+    private string m_comparisonStamp;
     private DateTimeOffset m_lastRemoteCheck = DateTimeOffset.MinValue;
     private string m_remoteCheckError;
     private string m_leaseHead;
@@ -321,7 +322,7 @@ public partial class WorkspaceWindow : Window
         }
     }
 
-    private async Task MutateAsync(string message, Func<Task> action)
+    private async Task MutateAsync(string message, Func<Task> action, bool preserveComparison = false)
     {
         if (m_snapshot == null)
             return;
@@ -334,8 +335,8 @@ public partial class WorkspaceWindow : Window
                     throw new InvalidOperationException("The current branch changed outside RepoG33k. Review the refreshed workspace and try again.");
                 await action();
             }
-            finally { await RefreshAsync(); }
-        });
+            finally { await RefreshAsync(preserveComparison); }
+        }, keepEditorActive: preserveComparison);
     }
 
     private void UpdateEnabledState()
@@ -382,6 +383,7 @@ public partial class WorkspaceWindow : Window
         m_leaseHead = state.UpstreamHead;
         m_historyRef = "HEAD";
         m_changeStamp = null;
+        m_comparisonStamp = null;
         m_lastRemoteCheck = DateTimeOffset.MinValue;
         m_remoteCheckError = null;
         Commits.Children.Clear();
@@ -401,7 +403,7 @@ public partial class WorkspaceWindow : Window
             {
                 await m_repository.StageAsync(m_snapshot.Root, file);
                 staged = true;
-            });
+            }, preserveComparison: true);
             return staged;
         };
         m_view.CreateFileGitActions = CreateFileGitActions;
@@ -417,7 +419,9 @@ public partial class WorkspaceWindow : Window
         DetailsBox.Text = Preferences.Details;
         AmendButton.IsChecked = false;
         RenderMetadata();
-        await m_view.ShowScopeAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
+        var openingStamp = await m_repository.ReadChangeStampAsync(state.Root);
+        await ShowComparisonAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
+        if (m_view.LastLoadSucceeded) m_changeStamp = openingStamp;
         await RefreshIndexAsync();
         await RefreshHistoryAsync();
         SavePreferences();
@@ -441,23 +445,39 @@ public partial class WorkspaceWindow : Window
         RenderMetadata();
     }
 
-    private async Task RefreshAsync()
+    private Task RefreshAsync() => RefreshAsync(false);
+
+    private async Task ShowComparisonAsync(DiffLensScope scope, CancellationToken token = default)
+    {
+        var stamp = await m_repository.ReadComparisonStampAsync(m_snapshot.Root, scope, m_base);
+        await m_view.ShowScopeAsync(scope, token);
+        if (m_view.LastLoadSucceeded)
+            m_comparisonStamp = stamp;
+    }
+
+    private async Task RefreshAsync(bool onlyIfComparisonChanged)
     {
         if (m_snapshot == null)
             return;
+        var repositoryStamp = await m_repository.ReadChangeStampAsync(m_snapshot.Root);
         await RefreshMetadataAsync();
         if (!m_backgroundRefresh)
             m_leaseHead = m_snapshot.UpstreamHead;
-        if (m_snapshot.Files.Any(f => f.IsConflict))
-            await m_view.ShowScopeAsync(new DiffLensScope("local", "All working changes"), m_cancellation?.Token ?? default);
-        else
-            await m_view.RefreshAsync(m_cancellation?.Token ?? default);
-        if (m_view.LastLoadCancelled)
+        var scope = m_snapshot.Files.Any(f => f.IsConflict)
+            ? new DiffLensScope("local", "All working changes") : m_view.CurrentScope ?? new DiffLensScope("local", "All working changes");
+        var comparisonStamp = await m_repository.ReadComparisonStampAsync(m_snapshot.Root, scope, m_base);
+        if (!onlyIfComparisonChanged || comparisonStamp != m_comparisonStamp)
         {
-            SetStatus("Comparison loading cancelled. The previous view is retained.");
-            return;
+            await m_view.ShowScopeAsync(scope, m_cancellation?.Token ?? default);
+            if (!m_view.LastLoadSucceeded)
+            {
+                SetStatus(m_view.LastLoadCancelled ? "Comparison loading cancelled. The previous view is retained." : "Comparison could not be loaded.");
+                return;
+            }
+            m_comparisonStamp = comparisonStamp;
         }
         await RefreshHistoryAsync();
+        m_changeStamp = repositoryStamp;
         SetStatus("Repository ready.");
     }
 
@@ -650,7 +670,7 @@ public partial class WorkspaceWindow : Window
     {
         if (m_view == null)
             return;
-        await m_view.ShowScopeAsync(scope, m_cancellation?.Token ?? default);
+        await ShowComparisonAsync(scope, m_cancellation?.Token ?? default);
         if (m_view.LastLoadCancelled)
             SetStatus("Comparison loading cancelled. The previous view is retained.");
         else if (!m_view.LastLoadSucceeded)
@@ -747,7 +767,7 @@ public partial class WorkspaceWindow : Window
         await RefreshHistoryAsync();
         HistorySection.IsExpanded = true;
         if (m_history.Count > 0)
-            await m_view.ShowScopeAsync(m_history[0], m_cancellation?.Token ?? default);
+            await ShowComparisonAsync(m_history[0], m_cancellation?.Token ?? default);
     }, cancellable: true);
 
     private async Task PullAsync()
@@ -770,6 +790,8 @@ public partial class WorkspaceWindow : Window
             return;
         m_polling = true;
         var root = m_snapshot.Root;
+        var observedSnapshot = m_snapshot;
+        var observedScope = m_view.CurrentScope;
         try
         {
             if (DateTimeOffset.UtcNow - m_lastRemoteCheck >= TimeSpan.FromMinutes(2))
@@ -782,20 +804,18 @@ public partial class WorkspaceWindow : Window
             }
             var stamp = await m_repository.ReadChangeStampAsync(root);
             // The user can keep working while the read-only probe and fetch are running.
-            if (m_busy || m_closing || m_workspaceFormOpen || m_snapshot.Root != root || m_view.IsLoading || m_view.IsEditing || FocusManager?.GetFocusedElement() is TextBox)
+            if (m_busy || m_closing || m_workspaceFormOpen || !ReferenceEquals(m_snapshot, observedSnapshot) || m_view.CurrentScope != observedScope || m_view.IsLoading || m_view.IsEditing || FocusManager?.GetFocusedElement() is TextBox)
                 return;
             UpdateBranchStatusTooltip();
             if (stamp == m_changeStamp)
                 return;
-            m_busy = m_backgroundRefresh = true;
+            m_busy = m_backgroundRefresh = m_keepEditorActive = true;
             UpdateEnabledState();
             try
             {
-                await RefreshAsync();
-                if (m_view.LastLoadSucceeded)
-                    m_changeStamp = stamp;
+                await RefreshAsync(true);
             }
-            finally { m_busy = m_backgroundRefresh = false; UpdateEnabledState(); }
+            finally { m_busy = m_backgroundRefresh = m_keepEditorActive = false; UpdateEnabledState(); }
         }
         catch (Exception ex) { if (!m_busy && !m_closing) SetStatus("Automatic refresh failed: " + ex.Message); }
         finally { m_polling = false; }
@@ -1024,7 +1044,7 @@ public partial class WorkspaceWindow : Window
         {
             if (m_view == null || !m_view.LastLoadSucceeded)
                 throw new InvalidOperationException("Load a comparison before reviewing it.");
-            await m_view.RefreshAsync(m_cancellation?.Token ?? default);
+            await ShowComparisonAsync(m_view.CurrentScope, m_cancellation?.Token ?? default);
             if (!m_view.LastLoadSucceeded)
                 throw new InvalidOperationException("Could not refresh the comparison for review.");
             var entries = m_view.Entries;
